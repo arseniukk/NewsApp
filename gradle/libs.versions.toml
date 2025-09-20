@@ -1,3 +1,5 @@
+# gradle/libs.versions.toml
+
 [versions]
 agp = "8.13.0"
 kotlin = "2.0.21"
@@ -8,6 +10,10 @@ espressoCore = "3.7.0"
 lifecycleRuntimeKtx = "2.9.3"
 activityCompose = "1.11.0"
 composeBom = "2024.09.00"
+
+# +++ ДОДАНО ЦІ ВЕРСІЇ +++
+navigationCompose = "2.7.7" # Це рекомендована версія, перевірте на dev.android.com/jetpack/androidx/releases/navigation
+# materialIconsExtended вже є в composeBom, тому окрему версію не вказуємо
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -25,8 +31,13 @@ androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 
+# +++ ДОДАНО ЦІ БІБЛІОТЕКИ +++
+androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigationCompose" }
+# material-icons-extended вже є в composeBom, тому додаємо його без вказівки версії
+androidx-compose-material-icons-extended = { group = "androidx.compose.material", name = "material-icons-extended" }
+
+
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
-

@@ -3,121 +3,137 @@ package com.example.newsapp
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ThumbUp
-import androidx.compose.material3.* // Використовуємо Material3
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable // Правильний імпорт для rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.example.newsapp.ui.theme.NewsAppTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            // Використовуємо тему Material3
-            MaterialTheme {
+            NewsAppTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    NewsApp()
+                    NewsAppMainScreen()
                 }
             }
         }
     }
 }
 
-// Головна Composable функція для додатку новин
-@OptIn(ExperimentalMaterial3Api::class) // Позначаємо, що TopAppBar є експериментальним API
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun NewsApp() {
-    // Scaffold надає базову структуру для Material Design компонентів
+fun NewsAppMainScreen() {
+    val navController = rememberNavController()
+
+    var selectedItem by remember { mutableStateOf(0) }
+    val items = listOf("Головна", "Категорії", "Збережене")
+
     Scaffold(
         topBar = {
-            TopAppBar( // Використовуємо TopAppBar з Material3
-                title = { Text("Мої Новини") }
+            CenterAlignedTopAppBar(
+                title = { Text("Мої Новини") },
             )
+        },
+        bottomBar = {
+            NavigationBar {
+                items.forEachIndexed { index, item ->
+                    NavigationBarItem(
+                        icon = {
+                            when (item) {
+                                "Головна" -> Icon(Icons.Filled.Home, contentDescription = item)
+                                "Категорії" -> Icon(Icons.Filled.Category, contentDescription = item)
+                                "Збережене" -> Icon(Icons.Filled.Bookmark, contentDescription = item)
+                            }
+                        },
+                        label = { Text(item) },
+                        selected = selectedItem == index,
+                        onClick = {
+                            selectedItem = index
+                            when (item) {
+                                "Головна" -> navController.navigate("home") {
+                                    popUpTo(navController.graph.startDestinationId) {
+                                        saveState = true
+                                    }
+                                    restoreState = true
+                                }
+                                "Категорії" -> navController.navigate("categories") {
+                                    popUpTo(navController.graph.startDestinationId) {
+                                        saveState = true
+                                    }
+                                    restoreState = true
+                                }
+                                "Збережене" -> navController.navigate("saved") {
+                                    popUpTo(navController.graph.startDestinationId) {
+                                        saveState = true
+                                    }
+                                    restoreState = true
+                                }
+                            }
+                        }
+                    )
+                }
+            }
         }
     ) { paddingValues ->
-        NewsList(sampleArticles, modifier = Modifier.padding(paddingValues))
-    }
-}
-
-@Composable
-fun NewsList(articles: List<Article>, modifier: Modifier = Modifier) {
-    LazyColumn(modifier = modifier.padding(16.dp)) {
-        items(articles) { article ->
-            NewsItem(article)
-            // Додаємо роздільник між статтями для кращої читабельності
-            Divider(modifier = Modifier.padding(vertical = 8.dp))
-        }
-    }
-}
-
-@Composable
-fun NewsItem(article: Article) {
-    // State та Recomposition: Використовуємо rememberSaveable для збереження стану при зміні конфігурації
-    var likesCount by rememberSaveable { mutableStateOf(0) }
-
-    // Column для вертикального розташування елементів статті
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(8.dp) // Модифікатор: відступ з усіх боків
-    ) {
-        Text(
-            text = article.title,
-            style = MaterialTheme.typography.headlineSmall, // Модифікатор: стиль тексту
-            modifier = Modifier.padding(bottom = 4.dp) // Модифікатор: відступ знизу
-        )
-        Text(
-            text = article.description,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
-        // Row для горизонтального розташування автора та дати
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween // Модифікатор: розташування елементів
-        ) {
-            Text(
-                text = "by ${article.author}",
-                style = MaterialTheme.typography.labelSmall
-            )
-            Text(
-                text = article.date,
-                style = MaterialTheme.typography.labelSmall
-            )
-        }
-
-        Spacer(modifier = Modifier.height(8.dp)) // Модифікатор: простір між елементами
-
-        // Row для кнопки лайка та лічильника
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.End // Модифікатор: вирівнювання праворуч
-        ) {
-            // Button: основний компонент UI
-            Button(
-                onClick = { likesCount++ }, // Збільшення лічильника лайків
-                // Модифікатор: зменшуємо відступ для кнопки
-                modifier = Modifier.padding(end = 8.dp)
-            ) {
-                Icon(Icons.Filled.ThumbUp, contentDescription = "Like")
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Like")
+        NavHost(navController, startDestination = "home", modifier = Modifier.padding(paddingValues)) {
+            composable("home") {
+                HomeScreen()
             }
-            // Text: відображення лічильника лайків
-            Text(
-                text = "$likesCount",
-                style = MaterialTheme.typography.bodyLarge,
-                // Модифікатор: вирівнювання тексту
-                modifier = Modifier.alignByBaseline()
-            )
+            composable("categories") {
+                Column(modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)) {
+                    Text("Екран категорій", style = MaterialTheme.typography.headlineMedium)
+                }
+            }
+            composable("saved") {
+                Column(modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)) {
+                    Text("Екран збережених новин", style = MaterialTheme.typography.headlineMedium)
+                }
+            }
         }
+    }
+}
+
+@Composable
+fun HomeScreen() {
+    val categories = listOf("Усі", "Технології", "Спорт", "Політика", "Наука", "Розваги", "Бізнес")
+
+    Column {
+        LazyRow(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(categories) { category ->
+                FilterChip(
+                    selected = false,
+                    onClick = { /* TODO: Фільтрувати новини за категорією */ },
+                    label = { Text(category) }
+                )
+            }
+        }
+
+        NewsList(sampleArticles)
     }
 }
