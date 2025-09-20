@@ -3,12 +3,8 @@ package com.example.newsapp
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Category
@@ -16,11 +12,16 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import androidx.navigation.navDeepLink
+import com.example.newsapp.screens.ArticleDetailScreen
+import com.example.newsapp.screens.HomeScreen
 import com.example.newsapp.ui.theme.NewsAppTheme
 import kotlinx.coroutines.launch
 
@@ -33,132 +34,89 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    NewsAppMainScreen()
+                    NewsApp()
                 }
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun NewsAppMainScreen() {
+fun NewsApp() {
     val navController = rememberNavController()
-    val newsViewModel: NewsViewModel = viewModel() // Створення ViewModel
+    val newsViewModel: NewsViewModel = viewModel()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    // Підписка на SharedFlow для показу Snackbar
+    // Підписка на події Snackbar з ViewModel
     LaunchedEffect(Unit) {
         newsViewModel.snackbarEvent.collect { message ->
             scope.launch {
-                snackbarHostState.showSnackbar(message)
+                snackbarHostState.showSnackbar(message, duration = SnackbarDuration.Short)
             }
         }
     }
 
+    // Стан для нижньої навігації
     var selectedItem by remember { mutableStateOf(0) }
-    val items = listOf("Головна", "Категорії", "Збережене")
+    val navItems = listOf("Головна", "Категорії", "Збережене")
+    val navIcons = listOf(Icons.Default.Home, Icons.Default.Category, Icons.Default.Bookmark)
 
     Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(title = { Text("Мої Новини") })
-        },
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         bottomBar = {
             NavigationBar {
-                items.forEachIndexed { index, item ->
+                navItems.forEachIndexed { index, item ->
                     NavigationBarItem(
-                        icon = {
-                            when (item) {
-                                "Головна" -> Icon(Icons.Filled.Home, contentDescription = item)
-                                "Категорії" -> Icon(Icons.Filled.Category, contentDescription = item)
-                                "Збережене" -> Icon(Icons.Filled.Bookmark, contentDescription = item)
-                            }
-                        },
+                        icon = { Icon(navIcons[index], contentDescription = item) },
                         label = { Text(item) },
                         selected = selectedItem == index,
                         onClick = {
                             selectedItem = index
-                            when (item) {
-                                "Головна" -> navController.navigate("home") {
-                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                    restoreState = true
+                            // Навігація для нижньої панелі. Поки що всі кнопки ведуть на головний екран.
+                            navController.navigate(Screen.HomeScreen.route) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
                                 }
-                                "Категорії" -> navController.navigate("categories") {
-                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                    restoreState = true
-                                }
-                                "Збережене" -> navController.navigate("saved") {
-                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
-                                    restoreState = true
-                                }
+                                launchSingleTop = true
+                                restoreState = true
                             }
                         }
                     )
                 }
             }
-        },
-        snackbarHost = { SnackbarHost(hostState = snackbarHostState) } // Додано хост для Snackbar
-    ) { paddingValues ->
-        NavHost(navController, startDestination = "home", modifier = Modifier.padding(paddingValues)) {
-            composable("home") {
-                HomeScreen(viewModel = newsViewModel) // Передача ViewModel на екран
-            }
-            composable("categories") {
-                Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                    Text("Екран категорій", style = MaterialTheme.typography.headlineMedium)
-                }
-            }
-            composable("saved") {
-                Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                    Text("Екран збережених новин", style = MaterialTheme.typography.headlineMedium)
-                }
-            }
         }
-    }
-}
-
-@Composable
-fun HomeScreen(viewModel: NewsViewModel) {
-    // Підписка на StateFlow. `collectAsState` автоматично перекомпоновує HomeScreen
-    // при зміні стану в ViewModel.
-    val uiState by viewModel.uiState.collectAsState()
-
-    Column {
-        CategoriesRow(
-            categories = uiState.categories,
-            selectedCategory = uiState.selectedCategory,
-            onCategorySelected = { category ->
-                // Всі дії передаються до ViewModel. UI не приймає рішень.
-                viewModel.selectCategory(category)
+    ) { paddingValues ->
+        // NavHost тепер є контентом Scaffold і отримує його відступи
+        NavHost(
+            navController = navController,
+            startDestination = Screen.HomeScreen.route,
+            modifier = Modifier.padding(paddingValues)
+        ) {
+            composable(route = Screen.HomeScreen.route) {
+                HomeScreen(
+                    viewModel = newsViewModel,
+                    onArticleClick = { articleId ->
+                        navController.navigate(Screen.ArticleDetailScreen.createRoute(articleId))
+                    }
+                )
             }
-        )
-        // Передаємо відфільтрований список статей та функцію-обробник лайку.
-        NewsList(
-            articles = uiState.articles,
-            onArticleLiked = { article ->
-                viewModel.onArticleLiked(article)
-            }
-        )
-    }
-}
 
-@Composable
-fun CategoriesRow(
-    categories: List<String>,
-    selectedCategory: String,
-    onCategorySelected: (String) -> Unit // Функція для передачі події "нагору"
-) {
-    LazyRow(
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        items(categories) { category ->
-            FilterChip(
-                selected = category == selectedCategory,
-                onClick = { onCategorySelected(category) },
-                label = { Text(category) }
-            )
+            composable(
+                route = Screen.ArticleDetailScreen.route,
+                arguments = listOf(navArgument(ARTICLE_ID_ARG) { type = NavType.IntType }),
+                deepLinks = listOf(navDeepLink { uriPattern = "https://www.mynewsapp.com/article/{$ARTICLE_ID_ARG}" })
+            ) { backStackEntry ->
+                val articleId = backStackEntry.arguments?.getInt(ARTICLE_ID_ARG)
+                val article = articleId?.let { newsViewModel.getArticleById(it) }
+
+                if (article != null) {
+                    ArticleDetailScreen(
+                        article = article,
+                        onNavigateUp = { navController.navigateUp() }
+                    )
+                }
+            }
         }
     }
 }
