@@ -17,11 +17,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavHostController
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.newsapp.ui.theme.NewsAppTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,15 +44,25 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun NewsAppMainScreen() {
     val navController = rememberNavController()
+    val newsViewModel: NewsViewModel = viewModel() // Створення ViewModel
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
+    // Підписка на SharedFlow для показу Snackbar
+    LaunchedEffect(Unit) {
+        newsViewModel.snackbarEvent.collect { message ->
+            scope.launch {
+                snackbarHostState.showSnackbar(message)
+            }
+        }
+    }
 
     var selectedItem by remember { mutableStateOf(0) }
     val items = listOf("Головна", "Категорії", "Збережене")
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text("Мої Новини") },
-            )
+            CenterAlignedTopAppBar(title = { Text("Мої Новини") })
         },
         bottomBar = {
             NavigationBar {
@@ -70,21 +81,15 @@ fun NewsAppMainScreen() {
                             selectedItem = index
                             when (item) {
                                 "Головна" -> navController.navigate("home") {
-                                    popUpTo(navController.graph.startDestinationId) {
-                                        saveState = true
-                                    }
+                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
                                     restoreState = true
                                 }
                                 "Категорії" -> navController.navigate("categories") {
-                                    popUpTo(navController.graph.startDestinationId) {
-                                        saveState = true
-                                    }
+                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
                                     restoreState = true
                                 }
                                 "Збережене" -> navController.navigate("saved") {
-                                    popUpTo(navController.graph.startDestinationId) {
-                                        saveState = true
-                                    }
+                                    popUpTo(navController.graph.startDestinationId) { saveState = true }
                                     restoreState = true
                                 }
                             }
@@ -92,23 +97,20 @@ fun NewsAppMainScreen() {
                     )
                 }
             }
-        }
+        },
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) } // Додано хост для Snackbar
     ) { paddingValues ->
         NavHost(navController, startDestination = "home", modifier = Modifier.padding(paddingValues)) {
             composable("home") {
-                HomeScreen()
+                HomeScreen(viewModel = newsViewModel) // Передача ViewModel на екран
             }
             composable("categories") {
-                Column(modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp)) {
+                Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
                     Text("Екран категорій", style = MaterialTheme.typography.headlineMedium)
                 }
             }
             composable("saved") {
-                Column(modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp)) {
+                Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
                     Text("Екран збережених новин", style = MaterialTheme.typography.headlineMedium)
                 }
             }
@@ -117,23 +119,46 @@ fun NewsAppMainScreen() {
 }
 
 @Composable
-fun HomeScreen() {
-    val categories = listOf("Усі", "Технології", "Спорт", "Політика", "Наука", "Розваги", "Бізнес")
+fun HomeScreen(viewModel: NewsViewModel) {
+    // Підписка на StateFlow. `collectAsState` автоматично перекомпоновує HomeScreen
+    // при зміні стану в ViewModel.
+    val uiState by viewModel.uiState.collectAsState()
 
     Column {
-        LazyRow(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(categories) { category ->
-                FilterChip(
-                    selected = false,
-                    onClick = { /* TODO: Фільтрувати новини за категорією */ },
-                    label = { Text(category) }
-                )
+        CategoriesRow(
+            categories = uiState.categories,
+            selectedCategory = uiState.selectedCategory,
+            onCategorySelected = { category ->
+                // Всі дії передаються до ViewModel. UI не приймає рішень.
+                viewModel.selectCategory(category)
             }
-        }
+        )
+        // Передаємо відфільтрований список статей та функцію-обробник лайку.
+        NewsList(
+            articles = uiState.articles,
+            onArticleLiked = { article ->
+                viewModel.onArticleLiked(article)
+            }
+        )
+    }
+}
 
-        NewsList(sampleArticles)
+@Composable
+fun CategoriesRow(
+    categories: List<String>,
+    selectedCategory: String,
+    onCategorySelected: (String) -> Unit // Функція для передачі події "нагору"
+) {
+    LazyRow(
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(categories) { category ->
+            FilterChip(
+                selected = category == selectedCategory,
+                onClick = { onCategorySelected(category) },
+                label = { Text(category) }
+            )
+        }
     }
 }

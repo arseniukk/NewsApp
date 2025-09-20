@@ -1,39 +1,44 @@
 package com.example.newsapp
+
 val sampleArticles = listOf(
     Article(
+        id = 1,
         title = "Breaking News: Kotlin is awesome!",
-        description = "Kotlin is one of the most popular programming languages for Android development. It makes app development faster and more enjoyable.",
+        description = "Kotlin is one of the most popular programming languages for Android development.",
         author = "Tech Times",
-        date = "14.09.2025"
+        date = "14.09.2025",
+        category = "Технології"
     ),
     Article(
+        id = 2,
         title = "Compose simplifies UI development on Android",
-        description = "Jetpack Compose allows developers to create modern, declarative UIs with significantly less code and increased efficiency.",
+        description = "Jetpack Compose allows developers to create modern, declarative UIs with less code.",
         author = "Android Weekly",
-        date = "13.09.2025"
+        date = "13.09.2025",
+        category = "Технології"
     ),
     Article(
-        title = "New Android Version is Here!",
-        description = "The latest Android version brings exciting new features, enhanced privacy controls, and performance improvements for all users.",
-        author = "Google Developers Blog",
-        date = "15.09.2025"
+        id = 3,
+        title = "The Future of Quantum Computing",
+        description = "Quantum computers promise to solve complex problems beyond the reach of classical computers.",
+        author = "Science Today",
+        date = "12.09.2025",
+        category = "Наука"
     ),
     Article(
-        title = "AI Transforms Healthcare Industry",
-        description = "Artificial intelligence is revolutionizing healthcare, from diagnostic tools to personalized treatment plans, offering new hope for patients.",
-        author = "Medical Insights",
-        date = "16.09.2025"
+        id = 4,
+        title = "Champions League Final: A Night to Remember",
+        description = "An unforgettable match with dramatic twists and a surprising winner.",
+        author = "Sports Illustrated",
+        date = "11.09.2025",
+        category = "Спорт"
     ),
     Article(
-        title = "SpaceX Launches Another Starlink Mission",
-        description = "SpaceX continues to expand its Starlink satellite constellation, aiming to provide global broadband internet access.",
-        author = "Space News",
-        date = "17.09.2025"
-    ),
-    Article(
-        title = "Global Economy Shows Signs of Recovery",
-        description = "Analysts report a steady upward trend in global economic indicators, suggesting a post-pandemic recovery is underway.",
+        id = 5,
+        title = "Economic Outlook for the Next Quarter",
+        description = "Experts weigh in on the challenges and opportunities in the global market.",
         author = "Business Insider",
-        date = "18.09.2025"
+        date = "10.09.2025",
+        category = "Бізнес"
     )
 )

@@ -64,4 +64,7 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 
+    // +++ ДОДАНО ЗАЛЕЖНІСТЬ ДЛЯ VIEWMODEL В COMPOSE +++
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+
 }

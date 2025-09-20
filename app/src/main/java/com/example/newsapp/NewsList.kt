@@ -7,24 +7,34 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
+// NewsList тепер приймає список статей і обробник події лайку.
 @Composable
-fun NewsList(articles: List<Article>, modifier: Modifier = Modifier) {
+fun NewsList(
+    articles: List<Article>,
+    onArticleLiked: (Article) -> Unit, // State Hoisting: передаємо подію нагору
+    modifier: Modifier = Modifier
+) {
     LazyColumn(modifier = modifier.padding(horizontal = 16.dp)) {
-        items(articles) { article ->
-            NewsItem(article)
+        items(articles, key = { it.id }) { article -> // Використовуємо `key` для оптимізації
+            NewsItem(
+                article = article,
+                onLikeClicked = { onArticleLiked(article) } // Передаємо подію далі
+            )
             Divider(modifier = Modifier.padding(vertical = 8.dp))
         }
     }
 }
 
+// NewsItem тепер повністю stateless (без стану). Він не має власного `remember`.
+// Він просто відображає дані та повідомляє про дії.
 @Composable
-fun NewsItem(article: Article) {
-    var likesCount by rememberSaveable { mutableStateOf(0) }
-
+fun NewsItem(
+    article: Article,
+    onLikeClicked: () -> Unit // State Hoisting: приймає лямбду для обробки кліку
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -67,7 +77,7 @@ fun NewsItem(article: Article) {
                 horizontalArrangement = Arrangement.End
             ) {
                 Button(
-                    onClick = { likesCount++ },
+                    onClick = onLikeClicked, // Викликаємо передану функцію
                     modifier = Modifier.padding(end = 8.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
@@ -77,11 +87,7 @@ fun NewsItem(article: Article) {
                     Spacer(modifier = Modifier.width(4.dp))
                     Text("Like")
                 }
-                Text(
-                    text = "$likesCount",
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.alignByBaseline()
-                )
+                // Ми видалили лічильник лайків, оскільки тепер використовуємо Snackbar
             }
         }
     }
