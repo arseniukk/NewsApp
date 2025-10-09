@@ -5,13 +5,14 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.io.IOException
 
-// У вас цей клас має бути в окремому файлі NewsUiState.kt
-// data class NewsUiState(...)
+
 
 class NewsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val articleDao = AppDatabase.getDatabase(application).articleDao()
+    private val newsRepository = NewsRepository()
 
     private val _uiState = MutableStateFlow(NewsUiState())
     val uiState: StateFlow<NewsUiState> = _uiState.asStateFlow()
@@ -19,9 +20,6 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
     private val _snackbarEvent = MutableSharedFlow<String>()
     val snackbarEvent: SharedFlow<String> = _snackbarEvent.asSharedFlow()
 
-    private val allArticles = sampleArticles
-
-    // --- Потоки даних з бази даних ---
     val savedArticles: StateFlow<List<SavedArticleEntity>> = articleDao.getAllSavedArticles()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -29,43 +27,47 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
         .map { it.toSet() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
-
     init {
-        loadContent()
+        loadTopHeadlines()
     }
 
-    private fun loadContent() {
-        val categories = listOf("Усі") + allArticles.map { it.category }.distinct()
-        _uiState.value = NewsUiState(
-            articles = allArticles,
-            categories = categories,
-            selectedCategory = "Усі"
-        )
-    }
-
-    // +++ ПОВЕРТАЄМО ФУНКЦІЮ ДЛЯ ФІЛЬТРАЦІЇ +++
-    fun selectCategory(category: String) {
-        val filteredArticles = if (category == "Усі") {
-            allArticles
-        } else {
-            allArticles.filter { it.category == category }
-        }
-
-        _uiState.update { currentState ->
-            currentState.copy(
-                selectedCategory = category,
-                articles = filteredArticles
-            )
+    fun loadTopHeadlines() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true, error = null) }
+            try {
+                val articlesFromApi = newsRepository.getTopHeadlines()
+                _uiState.update {
+                    it.copy(isLoading = false, articles = articlesFromApi)
+                }
+            } catch (e: IOException) {
+                _uiState.update { it.copy(isLoading = false, error = "Помилка мережі. Перевірте з'єднання з інтернетом.") }
+            } catch (e: Exception) {
+                _uiState.update { it.copy(isLoading = false, error = "Не вдалося завантажити новини: ${e.message}") }
+            }
         }
     }
 
     fun getArticleById(id: Int): Article? {
-        // У реальному додатку з API, тут був би запит до репозиторію
-        // або пошук у списку вже завантажених статей.
-        return allArticles.find { it.id == id }
+        // Спочатку шукаємо статтю серед завантажених з мережі
+        val articleFromApi = uiState.value.articles.find { it.id == id }
+        if (articleFromApi != null) {
+            return articleFromApi
+        }
+        // Якщо не знайшли (наприклад, перейшли зі збережених), шукаємо її там
+        val savedArticle = savedArticles.value.find { it.id == id }
+        return savedArticle?.let {
+            Article(
+                id = it.id,
+                title = it.title,
+                description = it.description,
+                author = it.author,
+                date = it.date,
+                category = it.category,
+                imageUrl = it.imageUrl
+            )
+        }
     }
 
-    // --- Логіка для збереження (Bookmarks) ---
     fun toggleSaveArticle(article: Article) {
         viewModelScope.launch {
             val isCurrentlySaved = articleDao.isArticleSaved(article.id).first()
@@ -84,7 +86,6 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
     }
 
-    // --- Логіка для лайків (Likes) ---
     fun toggleLikeArticle(article: Article) {
         viewModelScope.launch {
             if (likedArticleIds.value.contains(article.id)) {
@@ -96,7 +97,6 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
     }
 }
 
-// Допоміжна функція для конвертації
 fun Article.toSavedArticleEntity() = SavedArticleEntity(
     id = id,
     title = title,

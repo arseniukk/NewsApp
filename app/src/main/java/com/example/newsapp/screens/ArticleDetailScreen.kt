@@ -14,7 +14,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.example.newsapp.Article
 import com.example.newsapp.NewsViewModel
 
@@ -25,10 +27,7 @@ fun ArticleDetailScreen(
     viewModel: NewsViewModel,
     onNavigateUp: () -> Unit
 ) {
-    // Підписуємося на стан: чи збережена ця стаття
     val isSaved by viewModel.isArticleSaved(article.id).collectAsState()
-
-    // Підписуємося на стан: чи лайкнута ця стаття
     val likedIds by viewModel.likedArticleIds.collectAsState()
     val isLiked = article.id in likedIds
 
@@ -44,18 +43,13 @@ fun ArticleDetailScreen(
                         )
                     }
                 },
-                // Панель дій з кнопками "Лайк" та "Зберегти"
                 actions = {
-                    // Іконка-кнопка для лайку
                     IconButton(onClick = { viewModel.toggleLikeArticle(article) }) {
                         Icon(
-                            // Використовуємо різні іконки для стану "лайкнуто"
                             imageVector = if (isLiked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
                             contentDescription = "Лайк"
                         )
                     }
-
-                    // Іконка-кнопка для збереження
                     IconButton(onClick = { viewModel.toggleSaveArticle(article) }) {
                         Icon(
                             imageVector = if (isSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
@@ -70,23 +64,32 @@ fun ArticleDetailScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(16.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            Text(article.title, style = MaterialTheme.typography.headlineLarge)
-            Spacer(Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(article.author, style = MaterialTheme.typography.labelMedium)
-                Text(article.date, style = MaterialTheme.typography.labelMedium)
-            }
-            Divider(modifier = Modifier.padding(vertical = 16.dp))
-            Text(
-                text = article.description + "\n\n" + article.description,
-                style = MaterialTheme.typography.bodyLarge
+            AsyncImage(
+                model = article.imageUrl,
+                contentDescription = "Зображення новини",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(16f / 9f),
+                contentScale = ContentScale.Crop
             )
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(article.title, style = MaterialTheme.typography.headlineLarge)
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(article.author, style = MaterialTheme.typography.labelMedium)
+                    Text(article.date, style = MaterialTheme.typography.labelMedium)
+                }
+                Divider(modifier = Modifier.padding(vertical = 16.dp))
+                Text(
+                    text = article.description + "\n\n" + (article.description.takeIf { it.length > 10 } ?: ""),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
         }
     }
 }

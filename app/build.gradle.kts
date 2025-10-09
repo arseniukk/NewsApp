@@ -1,8 +1,18 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.ksp)
-    // Compose Compiler не потрібно оголошувати тут, якщо налаштовано buildFeatures
+    alias(libs.plugins.kotlin.serialization)
+}
+
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.inputStream().use {
+        localProperties.load(it)
+    }
 }
 
 android {
@@ -32,15 +42,12 @@ android {
         jvmTarget = "1.8"
     }
     buildFeatures {
-        compose = true // Цей прапорець автоматично активує плагін Compose
+        compose = true
+        // BuildConfig більше не потрібен, оскільки ми не використовуємо buildConfigField
     }
     composeOptions {
         kotlinCompilerExtensionVersion = libs.versions.kotlinCompilerExtension.get()
     }
-}
-
-dependencies {
-    // ... всі ваші залежності залишаються як є з попередньої відповіді ...
 }
 
 dependencies {
@@ -64,7 +71,17 @@ dependencies {
     // Room Database
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
-    ksp(libs.androidx.room.compiler) // Важливо: ksp
+    ksp(libs.androidx.room.compiler)
+
+    // Retrofit & OkHttp & Serialization
+    implementation(libs.retrofit.core)
+    implementation(libs.okhttp.core)
+    implementation(libs.okhttp.logging.interceptor)
+    implementation(libs.retrofit.kotlinx.serialization.converter)
+    implementation(libs.kotlinx.serialization.json)
+
+    // Coil (для зображень)
+    implementation(libs.coil.compose)
 
     // Testing
     testImplementation(libs.junit)
