@@ -1,61 +1,72 @@
-// build.gradle (Module :app)
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.ksp)
+    // Compose Compiler не потрібно оголошувати тут, якщо налаштовано buildFeatures
 }
 
 android {
     namespace = "com.example.newsapp"
-    compileSdk = 36 // Залишаємо як у вас, або оновіть, якщо потрібно
+    compileSdk = 34
 
     defaultConfig {
         applicationId = "com.example.newsapp"
         minSdk = 24
-        targetSdk = 36 // Залишаємо як у вас, або оновіть, якщо потрібно
+        targetSdk = 34
         versionCode = 1
         versionName = "1.0"
-
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
     }
     kotlinOptions {
-        jvmTarget = "11"
+        jvmTarget = "1.8"
     }
     buildFeatures {
-        compose = true
+        compose = true // Цей прапорець автоматично активує плагін Compose
+    }
+    composeOptions {
+        kotlinCompilerExtensionVersion = libs.versions.kotlinCompilerExtension.get()
     }
 }
 
 dependencies {
+    // ... всі ваші залежності залишаються як є з попередньої відповіді ...
+}
 
+dependencies {
+    // Core & Lifecycle
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+
+    // Compose
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.material.icons.extended)
 
-    // +++ ДОДАНО ЦІ ДВІ ЗАЛЕЖНОСТІ +++
-    implementation(libs.androidx.navigation.compose) // Для Compose Navigation
-    implementation(libs.androidx.compose.material.icons.extended) // Для Icons.Filled.Bookmark, Icons.Filled.Category
+    // Navigation
+    implementation(libs.androidx.navigation.compose)
 
+    // Room Database
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler) // Важливо: ksp
+
+    // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -63,8 +74,4 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
-
-    // +++ ДОДАНО ЗАЛЕЖНІСТЬ ДЛЯ VIEWMODEL В COMPOSE +++
-    implementation(libs.androidx.lifecycle.viewmodel.compose)
-
 }

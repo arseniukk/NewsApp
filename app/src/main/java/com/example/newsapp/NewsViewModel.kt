@@ -1,63 +1,41 @@
 package com.example.newsapp
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
-/**
- * Клас, що представляє стан UI для головного екрану новин.
- * Він є єдиним джерелом правди для UI.
- * @param articles Поточний список статей для відображення (може бути відфільтрованим).
- * @param categories Список усіх доступних категорій для фільтрації.
- * @param selectedCategory Назва поточно обраної категорії.
- */
-data class NewsUiState(
-    val articles: List<Article> = emptyList(),
-    val categories: List<String> = emptyList(),
-    val selectedCategory: String = "Усі"
-)
+// У вас цей клас має бути в окремому файлі NewsUiState.kt
+// data class NewsUiState(...)
 
-/**
- * ViewModel для екранів новин.
- * Відповідає за:
- * 1. Зберігання та управління станом UI (`NewsUiState`).
- * 2. Обробку дій користувача (вибір категорії, лайк статті).
- * 3. Надання даних для UI (список статей, конкретна стаття за ID).
- */
-class NewsViewModel : ViewModel() {
+class NewsViewModel(application: Application) : AndroidViewModel(application) {
 
-    // Приватний, змінний StateFlow. Тільки ViewModel може змінювати його.
+    private val articleDao = AppDatabase.getDatabase(application).articleDao()
+
     private val _uiState = MutableStateFlow(NewsUiState())
-    // Публічний, незмінний StateFlow. UI підписується на нього для отримання оновлень стану.
     val uiState: StateFlow<NewsUiState> = _uiState.asStateFlow()
 
-    // SharedFlow для надсилання одноразових подій до UI, наприклад, для показу Snackbar.
     private val _snackbarEvent = MutableSharedFlow<String>()
     val snackbarEvent: SharedFlow<String> = _snackbarEvent.asSharedFlow()
 
-    // У реальному додатку дані б завантажувалися з репозиторію (мережа, база даних).
-    // Тут ми використовуємо статичний список для демонстрації.
     private val allArticles = sampleArticles
 
+    // --- Потоки даних з бази даних ---
+    val savedArticles: StateFlow<List<SavedArticleEntity>> = articleDao.getAllSavedArticles()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val likedArticleIds: StateFlow<Set<Int>> = articleDao.getAllLikedArticleIds()
+        .map { it.toSet() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
+
+
     init {
-        // Завантажуємо початковий контент при створенні ViewModel.
         loadContent()
     }
 
-    /**
-     * Ініціалізує початковий стан UI: завантажує всі статті та визначає список категорій.
-     */
     private fun loadContent() {
-        // Створюємо список категорій, додаючи "Усі" на початок.
         val categories = listOf("Усі") + allArticles.map { it.category }.distinct()
-        // Оновлюємо стан UI початковими даними.
         _uiState.value = NewsUiState(
             articles = allArticles,
             categories = categories,
@@ -65,20 +43,14 @@ class NewsViewModel : ViewModel() {
         )
     }
 
-    /**
-     * Обробляє подію вибору категорії користувачем.
-     * Фільтрує список статей та оновлює стан UI.
-     * @param category Назва обраної категорії.
-     */
+    // +++ ПОВЕРТАЄМО ФУНКЦІЮ ДЛЯ ФІЛЬТРАЦІЇ +++
     fun selectCategory(category: String) {
-        // Фільтруємо список статей відповідно до обраної категорії.
         val filteredArticles = if (category == "Усі") {
             allArticles
         } else {
             allArticles.filter { it.category == category }
         }
 
-        // Оновлюємо стан UI. `update` є потокобезпечним способом зміни стану.
         _uiState.update { currentState ->
             currentState.copy(
                 selectedCategory = category,
@@ -87,26 +59,50 @@ class NewsViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Обробляє подію лайку статті.
-     * Надсилає одноразову подію для показу Snackbar.
-     * @param article Стаття, яку лайкнули.
-     */
-    fun onArticleLiked(article: Article) {
-        // Запускаємо корутину в скоупі ViewModel для виконання асинхронної операції.
+    fun getArticleById(id: Int): Article? {
+        // У реальному додатку з API, тут був би запит до репозиторію
+        // або пошук у списку вже завантажених статей.
+        return allArticles.find { it.id == id }
+    }
+
+    // --- Логіка для збереження (Bookmarks) ---
+    fun toggleSaveArticle(article: Article) {
         viewModelScope.launch {
-            _snackbarEvent.emit("Вам сподобалася стаття: ${article.title}")
+            val isCurrentlySaved = articleDao.isArticleSaved(article.id).first()
+            if (isCurrentlySaved) {
+                articleDao.deleteSavedArticle(article.toSavedArticleEntity())
+                _snackbarEvent.emit("Статтю видалено зі збережених")
+            } else {
+                articleDao.insertSavedArticle(article.toSavedArticleEntity())
+                _snackbarEvent.emit("Статтю збережено")
+            }
         }
     }
 
-    /**
-     * Повертає статтю за її унікальним ID.
-     * Ця функція використовується на екрані деталей статті.
-     * @param id Унікальний ідентифікатор статті.
-     * @return Об'єкт [Article] або null, якщо статтю не знайдено.
-     */
-    fun getArticleById(id: Int): Article? {
-        // Використовуємо функцію `find` для пошуку першого елемента, що відповідає умові.
-        return allArticles.find { it.id == id }
+    fun isArticleSaved(articleId: Int): StateFlow<Boolean> {
+        return articleDao.isArticleSaved(articleId)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    }
+
+    // --- Логіка для лайків (Likes) ---
+    fun toggleLikeArticle(article: Article) {
+        viewModelScope.launch {
+            if (likedArticleIds.value.contains(article.id)) {
+                articleDao.deleteLikedArticleId(article.id)
+            } else {
+                articleDao.insertLikedArticleId(LikedArticleId(id = article.id))
+            }
+        }
     }
 }
+
+// Допоміжна функція для конвертації
+fun Article.toSavedArticleEntity() = SavedArticleEntity(
+    id = id,
+    title = title,
+    description = description,
+    author = author,
+    date = date,
+    category = category,
+    imageUrl = imageUrl
+)

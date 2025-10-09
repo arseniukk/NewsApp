@@ -1,5 +1,6 @@
 package com.example.newsapp
 
+import android.app.Application
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -7,21 +8,25 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.navDeepLink
 import com.example.newsapp.screens.ArticleDetailScreen
 import com.example.newsapp.screens.HomeScreen
+import com.example.newsapp.screens.SavedScreen
 import com.example.newsapp.ui.theme.NewsAppTheme
 import kotlinx.coroutines.launch
 
@@ -44,11 +49,27 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun NewsApp() {
     val navController = rememberNavController()
-    val newsViewModel: NewsViewModel = viewModel()
+
+    // +++ ЦЕ НАЙВАЖЛИВІША ЗМІНА +++
+    // Ми створюємо ViewModel за допомогою спеціальної фабрики,
+    // оскільки вона тепер вимагає Application context у конструкторі.
+    val context = LocalContext.current
+    val newsViewModel: NewsViewModel = viewModel(
+        factory = NewsViewModelFactory(context.applicationContext as Application)
+    )
+    // +++ КІНЕЦЬ ВАЖЛИВОЇ ЗМІНИ +++
+
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
-    // Підписка на події Snackbar з ViewModel
+    val navItems = listOf(
+        "Головна" to Screen.HomeScreen.route,
+        "Збережене" to Screen.SavedScreen.route
+    )
+    val navIcons = listOf(Icons.Default.Home, Icons.Default.Bookmark)
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
+
     LaunchedEffect(Unit) {
         newsViewModel.snackbarEvent.collect { message ->
             scope.launch {
@@ -57,27 +78,18 @@ fun NewsApp() {
         }
     }
 
-    // Стан для нижньої навігації
-    var selectedItem by remember { mutableStateOf(0) }
-    val navItems = listOf("Головна", "Категорії", "Збережене")
-    val navIcons = listOf(Icons.Default.Home, Icons.Default.Category, Icons.Default.Bookmark)
-
     Scaffold(
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
         bottomBar = {
             NavigationBar {
-                navItems.forEachIndexed { index, item ->
+                navItems.forEachIndexed { index, (label, route) ->
                     NavigationBarItem(
-                        icon = { Icon(navIcons[index], contentDescription = item) },
-                        label = { Text(item) },
-                        selected = selectedItem == index,
+                        icon = { Icon(navIcons[index], contentDescription = label) },
+                        label = { Text(label) },
+                        selected = currentRoute == route,
                         onClick = {
-                            selectedItem = index
-                            // Навігація для нижньої панелі. Поки що всі кнопки ведуть на головний екран.
-                            navController.navigate(Screen.HomeScreen.route) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
-                                }
+                            navController.navigate(route) {
+                                popUpTo(navController.graph.findStartDestination().id) { saveState = true }
                                 launchSingleTop = true
                                 restoreState = true
                             }
@@ -87,7 +99,6 @@ fun NewsApp() {
             }
         }
     ) { paddingValues ->
-        // NavHost тепер є контентом Scaffold і отримує його відступи
         NavHost(
             navController = navController,
             startDestination = Screen.HomeScreen.route,
@@ -95,6 +106,15 @@ fun NewsApp() {
         ) {
             composable(route = Screen.HomeScreen.route) {
                 HomeScreen(
+                    viewModel = newsViewModel,
+                    onArticleClick = { articleId ->
+                        navController.navigate(Screen.ArticleDetailScreen.createRoute(articleId))
+                    }
+                )
+            }
+
+            composable(route = Screen.SavedScreen.route) {
+                SavedScreen(
                     viewModel = newsViewModel,
                     onArticleClick = { articleId ->
                         navController.navigate(Screen.ArticleDetailScreen.createRoute(articleId))
@@ -113,10 +133,23 @@ fun NewsApp() {
                 if (article != null) {
                     ArticleDetailScreen(
                         article = article,
+                        viewModel = newsViewModel,
                         onNavigateUp = { navController.navigateUp() }
                     )
                 }
             }
         }
+    }
+}
+
+// +++ ФАБРИКА, ЯКА ВМІЄ СТВОРЮВАТИ NewsViewModel +++
+// Вона передає Application у конструктор ViewModel.
+class NewsViewModelFactory(private val application: Application) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(NewsViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return NewsViewModel(application) as T
+        }
+        throw IllegalArgumentException("Unknown ViewModel class")
     }
 }
