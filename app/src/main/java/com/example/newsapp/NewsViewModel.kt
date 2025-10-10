@@ -3,23 +3,29 @@ package com.example.newsapp
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import java.io.IOException
 
+// Новий sealed class для представлення стану завантаження даних.
+// Він більш гнучкий, ніж просто isLoading та error.
+sealed interface ArticlesUiState {
+    data class Success(val articles: List<Article>) : ArticlesUiState
+    data class Error(val message: String) : ArticlesUiState
+    object Loading : ArticlesUiState
+}
 
-
+@OptIn(ExperimentalCoroutinesApi::class)
 class NewsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val articleDao = AppDatabase.getDatabase(application).articleDao()
     private val newsRepository = NewsRepository()
 
-    private val _uiState = MutableStateFlow(NewsUiState())
-    val uiState: StateFlow<NewsUiState> = _uiState.asStateFlow()
-
     private val _snackbarEvent = MutableSharedFlow<String>()
     val snackbarEvent: SharedFlow<String> = _snackbarEvent.asSharedFlow()
 
+    // --- Потоки з бази даних (залишаються без змін) ---
     val savedArticles: StateFlow<List<SavedArticleEntity>> = articleDao.getAllSavedArticles()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -27,45 +33,53 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
         .map { it.toSet() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
-    init {
-        loadTopHeadlines()
-    }
+    // --- РЕАКТИВНА ЧАСТИНА ---
 
-    fun loadTopHeadlines() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
-            try {
-                val articlesFromApi = newsRepository.getTopHeadlines()
-                _uiState.update {
-                    it.copy(isLoading = false, articles = articlesFromApi)
+    // 1. Потік, що зберігає поточну обрану категорію.
+    // Початкове значення "general" - перша категорія, яку ми завантажимо.
+    private val _selectedCategory = MutableStateFlow("general")
+    val selectedCategory: StateFlow<String> = _selectedCategory.asStateFlow()
+
+    // 2. Основний потік, що завантажує статті.
+    // flatMapLatest автоматично скасовує попередній запит і запускає новий,
+    // коли значення _selectedCategory змінюється. Це і є суть реактивності.
+    val articlesUiState: StateFlow<ArticlesUiState> = _selectedCategory
+        .flatMapLatest { category ->
+            flow {
+                emit(ArticlesUiState.Loading) // Повідомляємо UI, що почалося завантаження
+                try {
+                    // Викликаємо репозиторій з поточною категорією
+                    val articles = newsRepository.getTopHeadlines(category)
+                    emit(ArticlesUiState.Success(articles)) // Надсилаємо успішний результат
+                } catch (e: IOException) {
+                    emit(ArticlesUiState.Error("Помилка мережі. Перевірте з'єднання з інтернетом."))
+                } catch (e: Exception) {
+                    emit(ArticlesUiState.Error("Не вдалося завантажити новини: ${e.message}"))
                 }
-            } catch (e: IOException) {
-                _uiState.update { it.copy(isLoading = false, error = "Помилка мережі. Перевірте з'єднання з інтернетом.") }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, error = "Не вдалося завантажити новини: ${e.message}") }
             }
         }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000), // Потік активний, поки є хоч один підписник
+            initialValue = ArticlesUiState.Loading // Початковий стан - завантаження, щоб UI одразу показав індикатор
+        )
+
+    // Функція для зміни категорії, яку викликає UI
+    fun selectCategory(category: String) {
+        _selectedCategory.value = category.lowercase() // Зберігаємо в нижньому регістрі для API
     }
 
+    // --- Інші функції ---
+
     fun getArticleById(id: Int): Article? {
-        // Спочатку шукаємо статтю серед завантажених з мережі
-        val articleFromApi = uiState.value.articles.find { it.id == id }
+        // Шукаємо статтю в уже завантаженому списку...
+        val articleFromApi = (articlesUiState.value as? ArticlesUiState.Success)?.articles?.find { it.id == id }
         if (articleFromApi != null) {
             return articleFromApi
         }
-        // Якщо не знайшли (наприклад, перейшли зі збережених), шукаємо її там
+        // ...або в списку збережених, якщо перейшли з екрану "Збережене"
         val savedArticle = savedArticles.value.find { it.id == id }
-        return savedArticle?.let {
-            Article(
-                id = it.id,
-                title = it.title,
-                description = it.description,
-                author = it.author,
-                date = it.date,
-                category = it.category,
-                imageUrl = it.imageUrl
-            )
-        }
+        return savedArticle?.toArticle()
     }
 
     fun toggleSaveArticle(article: Article) {
@@ -97,12 +111,13 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
     }
 }
 
+// Допоміжні функції-маппери
 fun Article.toSavedArticleEntity() = SavedArticleEntity(
-    id = id,
-    title = title,
-    description = description,
-    author = author,
-    date = date,
-    category = category,
-    imageUrl = imageUrl
+    id = id, title = title, description = description, author = author,
+    date = date, category = category, imageUrl = imageUrl
+)
+
+fun SavedArticleEntity.toArticle() = Article(
+    id = id, title = title, description = description, author = author,
+    date = date, category = category, imageUrl = imageUrl
 )

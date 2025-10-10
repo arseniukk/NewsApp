@@ -3,6 +3,7 @@ package com.example.newsapp.screens
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
@@ -20,6 +21,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.newsapp.Article
+import com.example.newsapp.ArticlesUiState
 import com.example.newsapp.NewsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -28,50 +30,76 @@ fun HomeScreen(
     viewModel: NewsViewModel,
     onArticleClick: (Int) -> Unit
 ) {
-    val uiState by viewModel.uiState.collectAsState()
+    // Підписуємося на всі необхідні потоки з ViewModel
+    val articlesUiState by viewModel.articlesUiState.collectAsState()
+    val selectedCategory by viewModel.selectedCategory.collectAsState()
     val savedArticles by viewModel.savedArticles.collectAsState()
     val savedArticleIds = savedArticles.map { it.id }.toSet()
     val likedArticleIds by viewModel.likedArticleIds.collectAsState()
+
+    // Категорії, які підтримує NewsAPI на безкоштовному плані
+    val categories = listOf("General", "Business", "Technology", "Sports", "Science", "Health", "Entertainment")
 
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(title = { Text("Мої Новини") })
         }
     ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            when {
-                uiState.isLoading -> {
-                    CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                }
-                uiState.error != null -> {
-                    Text(
-                        text = uiState.error!!,
-                        color = MaterialTheme.colorScheme.error,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .align(Alignment.Center)
-                            .padding(16.dp)
-                    )
-                }
-                else -> {
-                    LazyColumn(
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        contentPadding = PaddingValues(vertical = 16.dp)
-                    ) {
-                        items(uiState.articles, key = { it.id }) { article ->
-                            NewsItem(
-                                article = article,
-                                isLiked = article.id in likedArticleIds,
-                                isSaved = article.id in savedArticleIds,
-                                onItemClick = { onArticleClick(article.id) },
-                                onLikeClick = { viewModel.toggleLikeArticle(article) },
-                                onSaveClick = { viewModel.toggleSaveArticle(article) }
+        Column(modifier = Modifier.padding(paddingValues)) {
+            // Рядок з категоріями для фільтрації
+            CategoriesRow(
+                categories = categories,
+                // Показуємо назву категорії з великої літери
+                selectedCategory = selectedCategory.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
+                onCategorySelected = { category -> viewModel.selectCategory(category) }
+            )
+
+            // Контейнер для відображення різних станів завантаження
+            Box(modifier = Modifier.fillMaxSize()) {
+                // `when` перевіряє поточний стан потоку `articlesUiState`
+                when (val state = articlesUiState) {
+                    // Стан завантаження: показуємо індикатор
+                    is ArticlesUiState.Loading -> {
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    }
+                    // Стан помилки: показуємо текст помилки
+                    is ArticlesUiState.Error -> {
+                        Text(
+                            text = state.message,
+                            color = MaterialTheme.colorScheme.error,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .padding(16.dp)
+                        )
+                    }
+                    // Стан успіху: показуємо список новин
+                    is ArticlesUiState.Success -> {
+                        if (state.articles.isEmpty()) {
+                            Text(
+                                text = "Новин для цієї категорії не знайдено.",
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier
+                                    .align(Alignment.Center)
+                                    .padding(16.dp)
                             )
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                                verticalArrangement = Arrangement.spacedBy(16.dp),
+                                contentPadding = PaddingValues(vertical = 16.dp)
+                            ) {
+                                items(state.articles, key = { it.id }) { article ->
+                                    NewsItem(
+                                        article = article,
+                                        isLiked = article.id in likedArticleIds,
+                                        isSaved = article.id in savedArticleIds,
+                                        onItemClick = { onArticleClick(article.id) },
+                                        onLikeClick = { viewModel.toggleLikeArticle(article) },
+                                        onSaveClick = { viewModel.toggleSaveArticle(article) }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -80,6 +108,27 @@ fun HomeScreen(
     }
 }
 
+@Composable
+fun CategoriesRow(
+    categories: List<String>,
+    selectedCategory: String,
+    onCategorySelected: (String) -> Unit
+) {
+    LazyRow(
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        items(categories) { category ->
+            FilterChip(
+                selected = category.equals(selectedCategory, ignoreCase = true),
+                onClick = { onCategorySelected(category) },
+                label = { Text(category) }
+            )
+        }
+    }
+}
+
+// Функція NewsItem залишається без змін, оскільки вона вже готова
 @Composable
 fun NewsItem(
     article: Article,

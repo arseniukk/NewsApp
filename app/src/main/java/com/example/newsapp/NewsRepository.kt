@@ -7,9 +7,8 @@ import java.util.Locale
 
 class NewsRepository {
 
-    suspend fun getTopHeadlines(): List<Article> {
-        val response = NewsApi.retrofitService.getTopHeadlines(country = "us")
-        // Конвертуємо DTO в нашу модель Article
+    suspend fun getTopHeadlines(category: String): List<Article> {
+        val response = NewsApi.retrofitService.getTopHeadlines(country = "us", category = category)
         return response.articles.mapNotNull { it.toArticle() }
     }
 }

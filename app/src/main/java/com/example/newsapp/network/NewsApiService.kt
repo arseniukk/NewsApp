@@ -14,9 +14,6 @@ import retrofit2.http.Query
 
 private const val BASE_URL = "https://newsapi.org/"
 
-// +++ ВСТАВТЕ ВАШ API КЛЮЧ ПРЯМО СЮДИ +++
-// Це тимчасове рішення для розробки. У реальних додатках так робити не можна,
-// але для лабораторної роботи це прийнятно.
 private const val API_KEY = "7aeab342139741abbed78df51932eb83"
 
 
@@ -43,7 +40,8 @@ private val retrofit = Retrofit.Builder()
 interface NewsApiService {
     @GET("v2/top-headlines")
     suspend fun getTopHeadlines(
-        @Query("country") country: String = "us"
+        @Query("country") country: String = "us" ,
+        @Query("category") category: String
     ): NewsResponse
 }
 
