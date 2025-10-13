@@ -16,12 +16,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.newsapp.Article
-import com.example.newsapp.ArticlesUiState
 import com.example.newsapp.NewsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -31,14 +29,13 @@ fun HomeScreen(
     onArticleClick: (Int) -> Unit
 ) {
     // Підписуємося на всі необхідні потоки з ViewModel
-    val articlesUiState by viewModel.articlesUiState.collectAsState()
+    val articles by viewModel.articles.collectAsState() // Тепер це просто список статей
     val selectedCategory by viewModel.selectedCategory.collectAsState()
     val savedArticles by viewModel.savedArticles.collectAsState()
     val savedArticleIds = savedArticles.map { it.id }.toSet()
     val likedArticleIds by viewModel.likedArticleIds.collectAsState()
 
-    // Категорії, які підтримує NewsAPI на безкоштовному плані
-    val categories = listOf("General", "Business", "Technology", "Sports", "Science", "Health", "Entertainment")
+    val categories = listOf("General", "Business", "Technology", "Sports", "Science")
 
     Scaffold(
         topBar = {
@@ -46,61 +43,34 @@ fun HomeScreen(
         }
     ) { paddingValues ->
         Column(modifier = Modifier.padding(paddingValues)) {
-            // Рядок з категоріями для фільтрації
             CategoriesRow(
                 categories = categories,
-                // Показуємо назву категорії з великої літери
-                selectedCategory = selectedCategory.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() },
+                selectedCategory = selectedCategory.replaceFirstChar { it.uppercase() },
                 onCategorySelected = { category -> viewModel.selectCategory(category) }
             )
 
-            // Контейнер для відображення різних станів завантаження
-            Box(modifier = Modifier.fillMaxSize()) {
-                // `when` перевіряє поточний стан потоку `articlesUiState`
-                when (val state = articlesUiState) {
-                    // Стан завантаження: показуємо індикатор
-                    is ArticlesUiState.Loading -> {
-                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-                    }
-                    // Стан помилки: показуємо текст помилки
-                    is ArticlesUiState.Error -> {
-                        Text(
-                            text = state.message,
-                            color = MaterialTheme.colorScheme.error,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .padding(16.dp)
+            // Перевіряємо, чи список порожній. Можна додати індикатор завантаження,
+            // але для offline-first це менш критично, оскільки дані з кешу з'являться миттєво.
+            if (articles.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text("Новини завантажуються або відсутні...")
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(vertical = 16.dp)
+                ) {
+                    items(articles, key = { it.id }) { article ->
+                        NewsItem(
+                            article = article,
+                            isLiked = article.id in likedArticleIds,
+                            isSaved = article.id in savedArticleIds,
+                            onItemClick = { onArticleClick(article.id) },
+                            // Тепер передаємо цілий об'єкт Article, як очікують функції
+                            onLikeClick = { viewModel.toggleLikeArticle(article) },
+                            onSaveClick = { viewModel.toggleSaveArticle(article) }
                         )
-                    }
-                    // Стан успіху: показуємо список новин
-                    is ArticlesUiState.Success -> {
-                        if (state.articles.isEmpty()) {
-                            Text(
-                                text = "Новин для цієї категорії не знайдено.",
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier
-                                    .align(Alignment.Center)
-                                    .padding(16.dp)
-                            )
-                        } else {
-                            LazyColumn(
-                                modifier = Modifier.padding(horizontal = 16.dp),
-                                verticalArrangement = Arrangement.spacedBy(16.dp),
-                                contentPadding = PaddingValues(vertical = 16.dp)
-                            ) {
-                                items(state.articles, key = { it.id }) { article ->
-                                    NewsItem(
-                                        article = article,
-                                        isLiked = article.id in likedArticleIds,
-                                        isSaved = article.id in savedArticleIds,
-                                        onItemClick = { onArticleClick(article.id) },
-                                        onLikeClick = { viewModel.toggleLikeArticle(article) },
-                                        onSaveClick = { viewModel.toggleSaveArticle(article) }
-                                    )
-                                }
-                            }
-                        }
                     }
                 }
             }
@@ -128,7 +98,6 @@ fun CategoriesRow(
     }
 }
 
-// Функція NewsItem залишається без змін, оскільки вона вже готова
 @Composable
 fun NewsItem(
     article: Article,

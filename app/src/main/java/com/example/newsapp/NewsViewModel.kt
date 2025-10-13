@@ -6,26 +6,17 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.io.IOException
-
-// Новий sealed class для представлення стану завантаження даних.
-// Він більш гнучкий, ніж просто isLoading та error.
-sealed interface ArticlesUiState {
-    data class Success(val articles: List<Article>) : ArticlesUiState
-    data class Error(val message: String) : ArticlesUiState
-    object Loading : ArticlesUiState
-}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class NewsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val articleDao = AppDatabase.getDatabase(application).articleDao()
-    private val newsRepository = NewsRepository()
+    private val newsRepository = NewsRepository(articleDao)
 
     private val _snackbarEvent = MutableSharedFlow<String>()
     val snackbarEvent: SharedFlow<String> = _snackbarEvent.asSharedFlow()
 
-    // --- Потоки з бази даних (залишаються без змін) ---
+    // --- Потоки даних з бази даних ---
     val savedArticles: StateFlow<List<SavedArticleEntity>> = articleDao.getAllSavedArticles()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -33,55 +24,61 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
         .map { it.toSet() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
-    // --- РЕАКТИВНА ЧАСТИНА ---
-
-    // 1. Потік, що зберігає поточну обрану категорію.
-    // Початкове значення "general" - перша категорія, яку ми завантажимо.
+    // --- Реактивний потік для стрічки новин ---
     private val _selectedCategory = MutableStateFlow("general")
     val selectedCategory: StateFlow<String> = _selectedCategory.asStateFlow()
 
-    // 2. Основний потік, що завантажує статті.
-    // flatMapLatest автоматично скасовує попередній запит і запускає новий,
-    // коли значення _selectedCategory змінюється. Це і є суть реактивності.
-    val articlesUiState: StateFlow<ArticlesUiState> = _selectedCategory
+    // articles тепер є потоком з репозиторію, який читає з кешу.
+    val articles: StateFlow<List<Article>> = _selectedCategory
         .flatMapLatest { category ->
-            flow {
-                emit(ArticlesUiState.Loading) // Повідомляємо UI, що почалося завантаження
-                try {
-                    // Викликаємо репозиторій з поточною категорією
-                    val articles = newsRepository.getTopHeadlines(category)
-                    emit(ArticlesUiState.Success(articles)) // Надсилаємо успішний результат
-                } catch (e: IOException) {
-                    emit(ArticlesUiState.Error("Помилка мережі. Перевірте з'єднання з інтернетом."))
-                } catch (e: Exception) {
-                    emit(ArticlesUiState.Error("Не вдалося завантажити новини: ${e.message}"))
-                }
-            }
+            newsRepository.getArticles(category)
         }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000), // Потік активний, поки є хоч один підписник
-            initialValue = ArticlesUiState.Loading // Початковий стан - завантаження, щоб UI одразу показав індикатор
-        )
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Функція для зміни категорії, яку викликає UI
-    fun selectCategory(category: String) {
-        _selectedCategory.value = category.lowercase() // Зберігаємо в нижньому регістрі для API
+    init {
+        // При першому запуску додатку одразу оновлюємо кеш для початкової категорії
+        refreshCurrentCategory()
     }
 
-    // --- Інші функції ---
-
-    fun getArticleById(id: Int): Article? {
-        // Шукаємо статтю в уже завантаженому списку...
-        val articleFromApi = (articlesUiState.value as? ArticlesUiState.Success)?.articles?.find { it.id == id }
-        if (articleFromApi != null) {
-            return articleFromApi
+    /**
+     * Запускає примусове оновлення кешу для поточної обраної категорії.
+     * Можна викликати, наприклад, при pull-to-refresh.
+     */
+    fun refreshCurrentCategory() {
+        viewModelScope.launch {
+            try {
+                newsRepository.refreshArticles(_selectedCategory.value)
+            } catch (e: Exception) {
+                _snackbarEvent.emit("Не вдалося оновити новини")
+            }
         }
-        // ...або в списку збережених, якщо перейшли з екрану "Збережене"
+    }
+
+    /**
+     * Змінює поточну категорію та запускає оновлення кешу для неї.
+     */
+    fun selectCategory(category: String) {
+        _selectedCategory.value = category.lowercase()
+        // Одразу запускаємо оновлення. UI автоматично підхопить зміни з бази даних.
+        refreshCurrentCategory()
+    }
+
+    /**
+     * Знаходить статтю за ID.
+     * Спочатку шукає серед завантажених у кеші, потім серед збережених.
+     */
+    fun getArticleById(id: Int): Article? {
+        val articleFromCache = articles.value.find { it.id == id }
+        if (articleFromCache != null) {
+            return articleFromCache
+        }
         val savedArticle = savedArticles.value.find { it.id == id }
         return savedArticle?.toArticle()
     }
 
+    /**
+     * Зберігає або видаляє статтю зі "Збережених".
+     */
     fun toggleSaveArticle(article: Article) {
         viewModelScope.launch {
             val isCurrentlySaved = articleDao.isArticleSaved(article.id).first()
@@ -95,11 +92,17 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Повертає потік, що показує, чи збережена стаття.
+     */
     fun isArticleSaved(articleId: Int): StateFlow<Boolean> {
         return articleDao.isArticleSaved(articleId)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
     }
 
+    /**
+     * Додає або видаляє "лайк" для статті.
+     */
     fun toggleLikeArticle(article: Article) {
         viewModelScope.launch {
             if (likedArticleIds.value.contains(article.id)) {
@@ -110,14 +113,3 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 }
-
-// Допоміжні функції-маппери
-fun Article.toSavedArticleEntity() = SavedArticleEntity(
-    id = id, title = title, description = description, author = author,
-    date = date, category = category, imageUrl = imageUrl
-)
-
-fun SavedArticleEntity.toArticle() = Article(
-    id = id, title = title, description = description, author = author,
-    date = date, category = category, imageUrl = imageUrl
-)

@@ -7,14 +7,6 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-val localProperties = Properties()
-val localPropertiesFile = rootProject.file("local.properties")
-if (localPropertiesFile.exists()) {
-    localPropertiesFile.inputStream().use {
-        localProperties.load(it)
-    }
-}
-
 android {
     namespace = "com.example.newsapp"
     compileSdk = 34
@@ -26,6 +18,7 @@ android {
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        multiDexEnabled = true // Включаємо підтримку multidex
     }
 
     buildTypes {
@@ -43,7 +36,6 @@ android {
     }
     buildFeatures {
         compose = true
-        // BuildConfig більше не потрібен, оскільки ми не використовуємо buildConfigField
     }
     composeOptions {
         kotlinCompilerExtensionVersion = libs.versions.kotlinCompilerExtension.get()
@@ -56,6 +48,8 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.work.manager)
+    implementation(libs.androidx.multidex)
 
     // Compose
     implementation(platform(libs.androidx.compose.bom))

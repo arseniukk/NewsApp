@@ -1,13 +1,15 @@
 package com.example.newsapp
 
 import android.content.Context
-import androidx.room.Database
-import androidx.room.Room
-import androidx.room.RoomDatabase
+import androidx.room.*
 
 @Database(
-    entities = [SavedArticleEntity::class, LikedArticleId::class], // +++ Додано LikedArticleId
-    version = 1,
+    entities = [
+        ArticleEntity::class, // +++ Додано таблицю для кешу
+        SavedArticleEntity::class,
+        LikedArticleId::class
+    ],
+    version = 2, // +++ ЗБІЛЬШУЄМО ВЕРСІЮ БАЗИ ДАНИХ
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -24,7 +26,11 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "news_app_database"
-                ).build()
+                )
+                    // Дозволяє Room видалити та створити базу даних заново при зміні версії.
+                    // Ідеально для розробки. У релізних додатках потрібні міграції.
+                    .fallbackToDestructiveMigration()
+                    .build()
                 INSTANCE = instance
                 instance
             }
