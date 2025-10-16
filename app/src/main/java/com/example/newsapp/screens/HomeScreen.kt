@@ -1,5 +1,6 @@
 package com.example.newsapp.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -16,12 +17,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import coil.compose.AsyncImage
 import com.example.newsapp.Article
+import com.example.newsapp.NewsSource
 import com.example.newsapp.NewsViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -30,42 +33,40 @@ fun HomeScreen(
     viewModel: NewsViewModel,
     onArticleClick: (Int) -> Unit
 ) {
-    // 1. Перетворюємо Flow<PagingData> на LazyPagingItems, що керує станом пагінації.
     val lazyPagingItems = viewModel.articles.collectAsLazyPagingItems()
-
-    // Підписуємося на інші потоки для статусу лайків та збережень.
     val selectedCategory by viewModel.selectedCategory.collectAsState()
+    val newsSource by viewModel.newsSource.collectAsState()
     val savedArticles by viewModel.savedArticles.collectAsState()
     val savedArticleIds = savedArticles.map { it.id }.toSet()
     val likedArticleIds by viewModel.likedArticleIds.collectAsState()
-
     val categories = listOf("General", "Business", "Technology", "Sports", "Science")
 
     Scaffold(
-        topBar = {
-            CenterAlignedTopAppBar(title = { Text("Мої Новини") })
-        }
+        topBar = { CenterAlignedTopAppBar(title = { Text("Мої Новини") }) }
     ) { paddingValues ->
         Column(modifier = Modifier.padding(paddingValues)) {
-            CategoriesRow(
-                categories = categories,
-                selectedCategory = selectedCategory.replaceFirstChar { it.uppercase() },
-                onCategorySelected = { category -> viewModel.selectCategory(category) }
+            SourceSelector(
+                selectedSource = newsSource,
+                onSourceSelected = { viewModel.selectNewsSource(it) }
             )
+            if (newsSource == NewsSource.NEWS_API) {
+                CategoriesRow(
+                    categories = categories,
+                    selectedCategory = selectedCategory.replaceFirstChar { it.uppercase() },
+                    onCategorySelected = { category -> viewModel.selectCategory(category) }
+                )
+            }
 
-            // 2. Використовуємо LazyColumn з paging items.
             LazyColumn(
                 modifier = Modifier.padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 contentPadding = PaddingValues(vertical = 16.dp)
             ) {
-                // Відображаємо завантажені елементи
                 items(
                     count = lazyPagingItems.itemCount,
-                    key = { index -> lazyPagingItems.peek(index)?.id ?: index } // Використовуємо peek для безпечного доступу
+                    key = { index -> lazyPagingItems.peek(index)?.id ?: index }
                 ) { index ->
-                    val article = lazyPagingItems[index]
-                    if (article != null) {
+                    lazyPagingItems[index]?.let { article ->
                         NewsItem(
                             article = article,
                             isLiked = article.id in likedArticleIds,
@@ -76,64 +77,25 @@ fun HomeScreen(
                         )
                     }
                 }
-
-                // 3. Обробка станів завантаження пагінації
                 lazyPagingItems.loadState.apply {
                     when {
-                        // Початкове завантаження (refresh)
                         refresh is LoadState.Loading -> {
-                            item {
-                                Box(
-                                    modifier = Modifier
-                                        .fillParentMaxSize() // Займає весь видимий простір LazyColumn
-                                        .padding(16.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    CircularProgressIndicator()
-                                }
-                            }
+                            item { Box(modifier = Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
                         }
-                        // Дозавантаження наступної сторінки (append)
                         append is LoadState.Loading -> {
-                            item {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    CircularProgressIndicator()
-                                }
-                            }
+                            item { Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
                         }
-                        // Помилка при початковому завантаженні
                         refresh is LoadState.Error -> {
-                            val e = lazyPagingItems.loadState.refresh as LoadState.Error
+                            val e = refresh as LoadState.Error
                             item {
-                                Column(
-                                    modifier = Modifier.fillParentMaxSize(),
-                                    verticalArrangement = Arrangement.Center,
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Text(
-                                        text = "Помилка: ${e.error.localizedMessage}",
-                                        color = MaterialTheme.colorScheme.error
-                                    )
-                                    Button(onClick = { lazyPagingItems.retry() }) {
-                                        Text("Спробувати ще")
-                                    }
+                                Column(modifier = Modifier.fillParentMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(text = "Помилка: ${e.error.localizedMessage}", color = MaterialTheme.colorScheme.error)
+                                    Button(onClick = { lazyPagingItems.retry() }) { Text("Спробувати ще") }
                                 }
                             }
                         }
-                        // Помилка при дозавантаженні
                         append is LoadState.Error -> {
-                            item {
-                                Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                                    Button(onClick = { lazyPagingItems.retry() }) {
-                                        Text("Повторити")
-                                    }
-                                }
-                            }
+                            item { Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) { Button(onClick = { lazyPagingItems.retry() }) { Text("Повторити") } } }
                         }
                     }
                 }
@@ -142,6 +104,28 @@ fun HomeScreen(
     }
 }
 
+@Composable
+fun SourceSelector(
+    selectedSource: NewsSource,
+    onSourceSelected: (NewsSource) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.Center
+    ) {
+        FilterChip(
+            selected = selectedSource == NewsSource.NEWS_API,
+            onClick = { onSourceSelected(NewsSource.NEWS_API) },
+            label = { Text("Світові новини") }
+        )
+        Spacer(Modifier.width(8.dp))
+        FilterChip(
+            selected = selectedSource == NewsSource.UKRAINIAN_NEWS_RSS,
+            onClick = { onSourceSelected(NewsSource.UKRAINIAN_NEWS_RSS) },
+            label = { Text("Новини України (RSS)") }
+        )
+    }
+}
 
 @Composable
 fun CategoriesRow(
@@ -179,14 +163,27 @@ fun NewsItem(
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column {
-            AsyncImage(
-                model = article.imageUrl,
-                contentDescription = "Зображення новини",
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(16f / 9f),
-                contentScale = ContentScale.Crop
-            )
+            // --- ОСЬ ВИПРАВЛЕННЯ ---
+            if (article.imageUrl != null) {
+                AsyncImage(
+                    model = article.imageUrl,
+                    contentDescription = "Зображення новини",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(16f / 9f),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                // Якщо URL зображення немає, показуємо заглушку
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(16f / 9f)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                )
+            }
+            // --- КІНЕЦЬ ВИПРАВЛЕННЯ ---
+
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(article.title, style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(8.dp))

@@ -6,91 +6,129 @@ import androidx.paging.PagingData
 import com.example.newsapp.network.ArticleDto
 import com.example.newsapp.network.NewsApi
 import com.example.newsapp.network.NewsPagingSource
+import com.example.newsapp.network.RssApi
+import com.example.newsapp.rss.RssItem
 import kotlinx.coroutines.flow.Flow
 import java.text.SimpleDateFormat
-import java.util.Locale
+import java.util.*
 
-/**
- * Репозиторій, що відповідає за надання даних для ViewModel.
- * Для завдання 11 він створює потік даних з пагінацією напряму з мережі.
- */
+enum class NewsSource {
+    NEWS_API,
+    UKRAINIAN_NEWS_RSS
+}
+
 class NewsRepository {
-
-    /**
-     * Створює потік PagingData, який буде завантажувати статті посторінково.
-     * @param category Категорія новин для завантаження.
-     * @return Flow<PagingData<Article>>
-     */
-    fun getArticlesStream(category: String): Flow<PagingData<Article>> {
-        return Pager(
-            // Конфігурація пагінації: скільки елементів завантажувати за раз.
-            config = PagingConfig(
-                pageSize = 20, // Кількість елементів на сторінці
-                enablePlaceholders = false
-            ),
-            // PagingSourceFactory - "фабрика", яка створює новий NewsPagingSource
-            // для кожного нового запиту (наприклад, при зміні категорії).
-            pagingSourceFactory = { NewsPagingSource(NewsApi.retrofitService, category) }
-        ).flow // .flow перетворює Pager на Flow<PagingData<Article>>
+    fun getArticlesStream(source: NewsSource, category: String): Flow<PagingData<Article>> {
+        return when (source) {
+            NewsSource.NEWS_API -> {
+                Pager(
+                    config = PagingConfig(pageSize = 20, enablePlaceholders = false),
+                    pagingSourceFactory = { NewsPagingSource(NewsApi.retrofitService, category) }
+                ).flow
+            }
+            NewsSource.UKRAINIAN_NEWS_RSS -> {
+                Pager(
+                    config = PagingConfig(pageSize = 100, enablePlaceholders = false),
+                    pagingSourceFactory = { RssPagingSource() }
+                ).flow
+            }
+        }
     }
 }
 
-// --- ФУНКЦІЇ-МАППЕРИ ЗАЛИШАЮТЬСЯ ВАЖЛИВИМИ ---
-
-/**
- * Конвертує [ArticleDto] (об'єкт з мережі) у [Article] (об'єкт для UI).
- * Використовується всередині NewsPagingSource.
- */
-fun ArticleDto.toArticle(): Article? {
-    // Відкидаємо статті без ключових полів, щоб уникнути крешів та порожніх елементів
-    if (title.isNullOrEmpty() || description.isNullOrEmpty() || url.isNullOrEmpty()) {
-        return null
+class RssPagingSource : androidx.paging.PagingSource<Int, Article>() {
+    override suspend fun load(params: LoadParams<Int>): LoadResult<Int, Article> {
+        return try {
+            val response = RssApi.retrofitService.getUkrainianNews()
+            val articles = response.channel?.items?.mapNotNull { it.toArticle() } ?: emptyList()
+            LoadResult.Page(data = articles, prevKey = null, nextKey = null)
+        } catch (e: Exception) {
+            LoadResult.Error(e)
+        }
     }
+    override fun getRefreshKey(state: androidx.paging.PagingState<Int, Article>): Int? = null
+}
+
+// --- ФУНКЦІЇ-МАППЕРИ ---
+
+fun ArticleDto.toArticle(): Article? {
+    if (title.isNullOrEmpty() || description.isNullOrEmpty() || url.isNullOrEmpty()) return null
     return Article(
-        id = url.hashCode(), // Генеруємо унікальний ID з URL
+        id = url.hashCode(),
         title = title,
         description = description,
         author = author ?: source?.name ?: "Unknown",
         date = publishedAt?.let { formatDate(it) } ?: "N/A",
-        // Категорію тепер беремо з джерела, якщо воно є
         category = source?.name ?: "General",
         imageUrl = urlToImage
     )
 }
 
-/**
- * Конвертує [Article] (з UI) у [SavedArticleEntity] (для збереження в базу даних).
- */
+fun RssItem.toArticle(): Article? {
+    if (title.isNullOrEmpty() || link.isNullOrEmpty()) return null
+    val cleanDescription = description?.replace(Regex("<.*?>|&.*?;"), "") ?: ""
+    return Article(
+        id = link.hashCode(),
+        title = title!!,
+        description = cleanDescription,
+        author = author ?: "Українська правда",
+        date = pubDate?.let { formatDateRss(it) } ?: "N/A",
+        category = "Україна",
+        imageUrl = null
+    )
+}
+
 fun Article.toSavedArticleEntity() = SavedArticleEntity(
-    id = id,
-    title = title,
-    description = description,
-    author = author,
-    date = date,
-    category = category,
-    imageUrl = imageUrl
+    id = id, title = title, description = description, author = author,
+    date = date, category = category, imageUrl = imageUrl
 )
 
-/**
- * Конвертує [SavedArticleEntity] (зі збережених) у [Article] (для UI).
- */
 fun SavedArticleEntity.toArticle() = Article(
-    id = id,
-    title = title,
-    description = description,
-    author = author,
-    date = date,
-    category = category,
-    imageUrl = imageUrl
+    id = id, title = title, description = description, author = author,
+    date = date, category = category, imageUrl = imageUrl
 )
+
+fun ArticleEntity.toArticle(): Article {
+    return Article(
+        id = this.id,
+        title = this.title,
+        description = this.description,
+        author = this.author,
+        date = this.date,
+        category = this.category,
+        imageUrl = this.imageUrl
+    )
+}
+
+fun ArticleDto.toArticleEntity(category: String): ArticleEntity? {
+    if (title.isNullOrEmpty() || description.isNullOrEmpty() || url.isNullOrEmpty()) return null
+    return ArticleEntity(
+        id = url.hashCode(),
+        title = title,
+        description = description,
+        author = author ?: source?.name ?: "Unknown",
+        date = publishedAt?.let { formatDate(it) } ?: "N/A",
+        category = category,
+        imageUrl = urlToImage
+    )
+}
 
 private fun formatDate(dateString: String): String {
     return try {
-        val inputFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault())
-        val outputFormat = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
-        val date = inputFormat.parse(dateString)
-        date?.let { outputFormat.format(it) } ?: dateString
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault()).parse(dateString)?.let {
+            SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(it)
+        } ?: dateString
     } catch (e: Exception) {
         dateString.substringBefore("T")
+    }
+}
+
+private fun formatDateRss(dateString: String): String {
+    return try {
+        SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss Z", Locale.ENGLISH).parse(dateString)?.let {
+            SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(it)
+        } ?: dateString
+    } catch (e: Exception) {
+        dateString
     }
 }

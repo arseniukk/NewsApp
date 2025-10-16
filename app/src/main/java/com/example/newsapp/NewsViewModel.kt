@@ -12,14 +12,13 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalCoroutinesApi::class)
 class NewsViewModel(application: Application) : AndroidViewModel(application) {
 
-    // Репозиторій тепер не потребує DAO для цього завдання
     private val newsRepository = NewsRepository()
     private val articleDao = AppDatabase.getDatabase(application).articleDao()
 
     private val _snackbarEvent = MutableSharedFlow<String>()
     val snackbarEvent: SharedFlow<String> = _snackbarEvent.asSharedFlow()
 
-    // --- Потоки з бази даних для лайків та збережень (залишаються без змін) ---
+    // --- Потоки з бази даних для лайків та збережень ---
     val savedArticles: StateFlow<List<SavedArticleEntity>> = articleDao.getAllSavedArticles()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -27,37 +26,48 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
         .map { it.toSet() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
-    // --- РЕАКТИВНИЙ ПОТІК ДЛЯ ПАГІНАЦІЇ ---
+    // --- РЕАКТИВНИЙ ПОТІК ДЛЯ ПАГІНАЦІЇ, ЩО ЗАЛЕЖИТЬ ВІД ДВОХ ПАРАМЕТРІВ ---
     private val _selectedCategory = MutableStateFlow("general")
     val selectedCategory: StateFlow<String> = _selectedCategory.asStateFlow()
 
+    private val _newsSource = MutableStateFlow(NewsSource.NEWS_API)
+    val newsSource: StateFlow<NewsSource> = _newsSource.asStateFlow()
+
     /**
      * Основний потік даних для UI.
-     * Він реагує на зміну категорії та створює новий потік PagingData.
-     * .cachedIn(viewModelScope) є надзвичайно важливим: він кешує дані
-     * і дозволяє їм пережити зміну конфігурації (наприклад, поворот екрану),
-     * не завантажуючи все заново.
+     * Використовуємо `combine` для об'єднання двох потоків: обраної категорії та обраного джерела.
+     * `flatMapLatest` реагує на будь-яку зміну в цій парі та запускає новий запит до репозиторію.
      */
-    val articles: Flow<PagingData<Article>> = _selectedCategory
-        .flatMapLatest { category ->
-            newsRepository.getArticlesStream(category)
-        }
-        .cachedIn(viewModelScope)
+    val articles: Flow<PagingData<Article>> = combine(
+        _selectedCategory,
+        _newsSource
+    ) { category, source ->
+        Pair(category, source)
+    }.flatMapLatest { (category, source) ->
+        newsRepository.getArticlesStream(source, category)
+    }.cachedIn(viewModelScope)
+
 
     /**
      * Змінює поточну категорію.
-     * UI автоматично оновить список, оскільки articles залежить від _selectedCategory.
      */
     fun selectCategory(category: String) {
         _selectedCategory.value = category.lowercase()
     }
 
+    /**
+     * Змінює поточне джерело новин.
+     */
+    fun selectNewsSource(source: NewsSource) {
+        _newsSource.value = source
+    }
+
+
     // --- Функції для лайків та збережень (залишаються без змін) ---
 
     fun getArticleById(id: Int): Article? {
-        // Ця функція більше не може надійно працювати, оскільки ми не маємо повного списку
-        // статей. Для детального екрану дані краще передавати напряму.
-        // Поки що залишаємо як заглушку, що шукає лише у збережених.
+        // Ця логіка залишається складною з пагінацією.
+        // Для простоти, шукаємо тільки у збережених.
         val savedArticle = savedArticles.value.find { it.id == id }
         return savedArticle?.toArticle()
     }

@@ -16,7 +16,6 @@ android {
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        // multiDexEnabled видалено
     }
 
     buildTypes {
@@ -73,6 +72,7 @@ dependencies {
     implementation(libs.okhttp.logging.interceptor)
     implementation(libs.retrofit.kotlinx.serialization.converter)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.retrofit.converter.simplexml) // +++ Для парсингу XML
 
     // Coil (для зображень)
     implementation(libs.coil.compose)
