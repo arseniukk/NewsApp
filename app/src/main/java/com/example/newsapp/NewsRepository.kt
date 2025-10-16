@@ -1,67 +1,66 @@
 package com.example.newsapp
 
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
 import com.example.newsapp.network.ArticleDto
 import com.example.newsapp.network.NewsApi
+import com.example.newsapp.network.NewsPagingSource
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-class NewsRepository(private val articleDao: ArticleDao) {
+/**
+ * Репозиторій, що відповідає за надання даних для ViewModel.
+ * Для завдання 11 він створює потік даних з пагінацією напряму з мережі.
+ */
+class NewsRepository {
 
-    fun getArticles(category: String): Flow<List<Article>> {
-        return articleDao.getArticlesByCategory(category).map { entities ->
-            entities.map { entity ->
-                entity.toArticle()
-            }
-        }
-    }
-
-    suspend fun refreshArticles(category: String) {
-        try {
-            val articlesFromApi = NewsApi.retrofitService.getTopHeadlines(category = category)
-            val articleEntities = articlesFromApi.articles.mapNotNull { dto ->
-                dto.toArticleEntity(category)
-            }
-            articleDao.clearArticlesByCategory(category)
-            articleDao.insertArticles(articleEntities)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            throw e
-        }
+    /**
+     * Створює потік PagingData, який буде завантажувати статті посторінково.
+     * @param category Категорія новин для завантаження.
+     * @return Flow<PagingData<Article>>
+     */
+    fun getArticlesStream(category: String): Flow<PagingData<Article>> {
+        return Pager(
+            // Конфігурація пагінації: скільки елементів завантажувати за раз.
+            config = PagingConfig(
+                pageSize = 20, // Кількість елементів на сторінці
+                enablePlaceholders = false
+            ),
+            // PagingSourceFactory - "фабрика", яка створює новий NewsPagingSource
+            // для кожного нового запиту (наприклад, при зміні категорії).
+            pagingSourceFactory = { NewsPagingSource(NewsApi.retrofitService, category) }
+        ).flow // .flow перетворює Pager на Flow<PagingData<Article>>
     }
 }
 
-// --- ВСІ ФУНКЦІЇ-МАППЕРИ МАЮТЬ БУТИ ТУТ ---
+// --- ФУНКЦІЇ-МАППЕРИ ЗАЛИШАЮТЬСЯ ВАЖЛИВИМИ ---
 
-fun ArticleEntity.toArticle(): Article {
-    return Article(
-        id = this.id,
-        title = this.title,
-        description = this.description,
-        author = this.author,
-        date = this.date,
-        category = this.category,
-        imageUrl = this.imageUrl
-    )
-}
-
-fun ArticleDto.toArticleEntity(category: String): ArticleEntity? {
+/**
+ * Конвертує [ArticleDto] (об'єкт з мережі) у [Article] (об'єкт для UI).
+ * Використовується всередині NewsPagingSource.
+ */
+fun ArticleDto.toArticle(): Article? {
+    // Відкидаємо статті без ключових полів, щоб уникнути крешів та порожніх елементів
     if (title.isNullOrEmpty() || description.isNullOrEmpty() || url.isNullOrEmpty()) {
         return null
     }
-    return ArticleEntity(
-        id = url.hashCode(),
+    return Article(
+        id = url.hashCode(), // Генеруємо унікальний ID з URL
         title = title,
         description = description,
         author = author ?: source?.name ?: "Unknown",
         date = publishedAt?.let { formatDate(it) } ?: "N/A",
-        category = category,
+        // Категорію тепер беремо з джерела, якщо воно є
+        category = source?.name ?: "General",
         imageUrl = urlToImage
     )
 }
 
-// Функція для конвертації Article (з UI) в SavedArticleEntity (для збереження)
+/**
+ * Конвертує [Article] (з UI) у [SavedArticleEntity] (для збереження в базу даних).
+ */
 fun Article.toSavedArticleEntity() = SavedArticleEntity(
     id = id,
     title = title,
@@ -72,7 +71,9 @@ fun Article.toSavedArticleEntity() = SavedArticleEntity(
     imageUrl = imageUrl
 )
 
-// Функція для конвертації SavedArticleEntity (зі збережених) в Article (для UI)
+/**
+ * Конвертує [SavedArticleEntity] (зі збережених) у [Article] (для UI).
+ */
 fun SavedArticleEntity.toArticle() = Article(
     id = id,
     title = title,

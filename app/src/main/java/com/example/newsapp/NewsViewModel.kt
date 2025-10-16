@@ -3,6 +3,8 @@ package com.example.newsapp
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -10,13 +12,14 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalCoroutinesApi::class)
 class NewsViewModel(application: Application) : AndroidViewModel(application) {
 
+    // Репозиторій тепер не потребує DAO для цього завдання
+    private val newsRepository = NewsRepository()
     private val articleDao = AppDatabase.getDatabase(application).articleDao()
-    private val newsRepository = NewsRepository(articleDao)
 
     private val _snackbarEvent = MutableSharedFlow<String>()
     val snackbarEvent: SharedFlow<String> = _snackbarEvent.asSharedFlow()
 
-    // --- Потоки даних з бази даних ---
+    // --- Потоки з бази даних для лайків та збережень (залишаються без змін) ---
     val savedArticles: StateFlow<List<SavedArticleEntity>> = articleDao.getAllSavedArticles()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -24,61 +27,41 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
         .map { it.toSet() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
-    // --- Реактивний потік для стрічки новин ---
+    // --- РЕАКТИВНИЙ ПОТІК ДЛЯ ПАГІНАЦІЇ ---
     private val _selectedCategory = MutableStateFlow("general")
     val selectedCategory: StateFlow<String> = _selectedCategory.asStateFlow()
 
-    // articles тепер є потоком з репозиторію, який читає з кешу.
-    val articles: StateFlow<List<Article>> = _selectedCategory
-        .flatMapLatest { category ->
-            newsRepository.getArticles(category)
-        }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-
-    init {
-        // При першому запуску додатку одразу оновлюємо кеш для початкової категорії
-        refreshCurrentCategory()
-    }
-
     /**
-     * Запускає примусове оновлення кешу для поточної обраної категорії.
-     * Можна викликати, наприклад, при pull-to-refresh.
+     * Основний потік даних для UI.
+     * Він реагує на зміну категорії та створює новий потік PagingData.
+     * .cachedIn(viewModelScope) є надзвичайно важливим: він кешує дані
+     * і дозволяє їм пережити зміну конфігурації (наприклад, поворот екрану),
+     * не завантажуючи все заново.
      */
-    fun refreshCurrentCategory() {
-        viewModelScope.launch {
-            try {
-                newsRepository.refreshArticles(_selectedCategory.value)
-            } catch (e: Exception) {
-                _snackbarEvent.emit("Не вдалося оновити новини")
-            }
+    val articles: Flow<PagingData<Article>> = _selectedCategory
+        .flatMapLatest { category ->
+            newsRepository.getArticlesStream(category)
         }
-    }
+        .cachedIn(viewModelScope)
 
     /**
-     * Змінює поточну категорію та запускає оновлення кешу для неї.
+     * Змінює поточну категорію.
+     * UI автоматично оновить список, оскільки articles залежить від _selectedCategory.
      */
     fun selectCategory(category: String) {
         _selectedCategory.value = category.lowercase()
-        // Одразу запускаємо оновлення. UI автоматично підхопить зміни з бази даних.
-        refreshCurrentCategory()
     }
 
-    /**
-     * Знаходить статтю за ID.
-     * Спочатку шукає серед завантажених у кеші, потім серед збережених.
-     */
+    // --- Функції для лайків та збережень (залишаються без змін) ---
+
     fun getArticleById(id: Int): Article? {
-        val articleFromCache = articles.value.find { it.id == id }
-        if (articleFromCache != null) {
-            return articleFromCache
-        }
+        // Ця функція більше не може надійно працювати, оскільки ми не маємо повного списку
+        // статей. Для детального екрану дані краще передавати напряму.
+        // Поки що залишаємо як заглушку, що шукає лише у збережених.
         val savedArticle = savedArticles.value.find { it.id == id }
         return savedArticle?.toArticle()
     }
 
-    /**
-     * Зберігає або видаляє статтю зі "Збережених".
-     */
     fun toggleSaveArticle(article: Article) {
         viewModelScope.launch {
             val isCurrentlySaved = articleDao.isArticleSaved(article.id).first()
@@ -92,17 +75,11 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /**
-     * Повертає потік, що показує, чи збережена стаття.
-     */
     fun isArticleSaved(articleId: Int): StateFlow<Boolean> {
         return articleDao.isArticleSaved(articleId)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
     }
 
-    /**
-     * Додає або видаляє "лайк" для статті.
-     */
     fun toggleLikeArticle(article: Article) {
         viewModelScope.launch {
             if (likedArticleIds.value.contains(article.id)) {

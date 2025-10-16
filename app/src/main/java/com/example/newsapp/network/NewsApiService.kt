@@ -40,8 +40,10 @@ private val retrofit = Retrofit.Builder()
 interface NewsApiService {
     @GET("v2/top-headlines")
     suspend fun getTopHeadlines(
-        @Query("country") country: String = "us" ,
-        @Query("category") category: String
+        @Query("country") country: String = "us",
+        @Query("category") category: String,
+        @Query("page") page: Int,       // +++ Номер сторінки
+        @Query("pageSize") pageSize: Int // +++ Кількість елементів на сторінці
     ): NewsResponse
 }
 

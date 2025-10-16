@@ -18,6 +18,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.paging.LoadState
+import androidx.paging.compose.collectAsLazyPagingItems
 import coil.compose.AsyncImage
 import com.example.newsapp.Article
 import com.example.newsapp.NewsViewModel
@@ -28,8 +30,10 @@ fun HomeScreen(
     viewModel: NewsViewModel,
     onArticleClick: (Int) -> Unit
 ) {
-    // Підписуємося на всі необхідні потоки з ViewModel
-    val articles by viewModel.articles.collectAsState() // Тепер це просто список статей
+    // 1. Перетворюємо Flow<PagingData> на LazyPagingItems, що керує станом пагінації.
+    val lazyPagingItems = viewModel.articles.collectAsLazyPagingItems()
+
+    // Підписуємося на інші потоки для статусу лайків та збережень.
     val selectedCategory by viewModel.selectedCategory.collectAsState()
     val savedArticles by viewModel.savedArticles.collectAsState()
     val savedArticleIds = savedArticles.map { it.id }.toSet()
@@ -49,34 +53,95 @@ fun HomeScreen(
                 onCategorySelected = { category -> viewModel.selectCategory(category) }
             )
 
-            // Перевіряємо, чи список порожній. Можна додати індикатор завантаження,
-            // але для offline-first це менш критично, оскільки дані з кешу з'являться миттєво.
-            if (articles.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text("Новини завантажуються або відсутні...")
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    contentPadding = PaddingValues(vertical = 16.dp)
-                ) {
-                    items(articles, key = { it.id }) { article ->
+            // 2. Використовуємо LazyColumn з paging items.
+            LazyColumn(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(vertical = 16.dp)
+            ) {
+                // Відображаємо завантажені елементи
+                items(
+                    count = lazyPagingItems.itemCount,
+                    key = { index -> lazyPagingItems.peek(index)?.id ?: index } // Використовуємо peek для безпечного доступу
+                ) { index ->
+                    val article = lazyPagingItems[index]
+                    if (article != null) {
                         NewsItem(
                             article = article,
                             isLiked = article.id in likedArticleIds,
                             isSaved = article.id in savedArticleIds,
                             onItemClick = { onArticleClick(article.id) },
-                            // Тепер передаємо цілий об'єкт Article, як очікують функції
                             onLikeClick = { viewModel.toggleLikeArticle(article) },
                             onSaveClick = { viewModel.toggleSaveArticle(article) }
                         )
+                    }
+                }
+
+                // 3. Обробка станів завантаження пагінації
+                lazyPagingItems.loadState.apply {
+                    when {
+                        // Початкове завантаження (refresh)
+                        refresh is LoadState.Loading -> {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillParentMaxSize() // Займає весь видимий простір LazyColumn
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator()
+                                }
+                            }
+                        }
+                        // Дозавантаження наступної сторінки (append)
+                        append is LoadState.Loading -> {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator()
+                                }
+                            }
+                        }
+                        // Помилка при початковому завантаженні
+                        refresh is LoadState.Error -> {
+                            val e = lazyPagingItems.loadState.refresh as LoadState.Error
+                            item {
+                                Column(
+                                    modifier = Modifier.fillParentMaxSize(),
+                                    verticalArrangement = Arrangement.Center,
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text = "Помилка: ${e.error.localizedMessage}",
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                    Button(onClick = { lazyPagingItems.retry() }) {
+                                        Text("Спробувати ще")
+                                    }
+                                }
+                            }
+                        }
+                        // Помилка при дозавантаженні
+                        append is LoadState.Error -> {
+                            item {
+                                Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                    Button(onClick = { lazyPagingItems.retry() }) {
+                                        Text("Повторити")
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
     }
 }
+
 
 @Composable
 fun CategoriesRow(
