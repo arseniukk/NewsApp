@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,6 +28,7 @@ import androidx.navigation.navArgument
 import androidx.navigation.navDeepLink
 import com.example.newsapp.screens.AnalyticsScreen
 import com.example.newsapp.screens.ArticleDetailScreen
+import com.example.newsapp.screens.DashboardScreen
 import com.example.newsapp.screens.HomeScreen
 import com.example.newsapp.screens.SavedScreen
 import com.example.newsapp.ui.theme.NewsAppTheme
@@ -63,12 +65,14 @@ fun NewsApp() {
     val navItems = listOf(
         "Головна" to Screen.HomeScreen.route,
         "Збережене" to Screen.SavedScreen.route,
-        "Аналітика" to Screen.AnalyticsScreen.route // Новий пункт
+        "Аналітика" to Screen.AnalyticsScreen.route,
+        "Дашборд" to Screen.DashboardScreen.route // Новий пункт
     )
     val navIcons = listOf(
         Icons.Default.Home,
         Icons.Default.Bookmark,
-        Icons.Default.Analytics // Нова іконка
+        Icons.Default.Analytics,
+        Icons.Default.Dashboard // Нова іконка
     )
     // --- Кінець оновлення ---
 
@@ -127,9 +131,13 @@ fun NewsApp() {
                 )
             }
 
-            // +++ Додаємо новий екран в навігаційний граф +++
             composable(route = Screen.AnalyticsScreen.route) {
                 AnalyticsScreen(viewModel = newsViewModel)
+            }
+
+            // +++ Додаємо новий екран в навігаційний граф +++
+            composable(route = Screen.DashboardScreen.route) {
+                DashboardScreen(viewModel = newsViewModel)
             }
 
             composable(
@@ -138,7 +146,6 @@ fun NewsApp() {
                 deepLinks = listOf(navDeepLink { uriPattern = "https://www.mynewsapp.com/article/{$ARTICLE_ID_ARG}" })
             ) { backStackEntry ->
                 val articleId = backStackEntry.arguments?.getInt(ARTICLE_ID_ARG)
-                // Викликаємо getArticleById, який тепер шукає і в кеші, і в збережених
                 val article = articleId?.let { newsViewModel.getArticleById(it) }
 
                 if (article != null) {
