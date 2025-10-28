@@ -7,6 +7,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material3.*
@@ -24,6 +25,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.navDeepLink
+import com.example.newsapp.screens.AnalyticsScreen
 import com.example.newsapp.screens.ArticleDetailScreen
 import com.example.newsapp.screens.HomeScreen
 import com.example.newsapp.screens.SavedScreen
@@ -49,24 +51,27 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun NewsApp() {
     val navController = rememberNavController()
-
-    // +++ ЦЕ НАЙВАЖЛИВІША ЗМІНА +++
-    // Ми створюємо ViewModel за допомогою спеціальної фабрики,
-    // оскільки вона тепер вимагає Application context у конструкторі.
     val context = LocalContext.current
     val newsViewModel: NewsViewModel = viewModel(
         factory = NewsViewModelFactory(context.applicationContext as Application)
     )
-    // +++ КІНЕЦЬ ВАЖЛИВОЇ ЗМІНИ +++
 
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
+    // --- Оновлюємо списки для BottomBar ---
     val navItems = listOf(
         "Головна" to Screen.HomeScreen.route,
-        "Збережене" to Screen.SavedScreen.route
+        "Збережене" to Screen.SavedScreen.route,
+        "Аналітика" to Screen.AnalyticsScreen.route // Новий пункт
     )
-    val navIcons = listOf(Icons.Default.Home, Icons.Default.Bookmark)
+    val navIcons = listOf(
+        Icons.Default.Home,
+        Icons.Default.Bookmark,
+        Icons.Default.Analytics // Нова іконка
+    )
+    // --- Кінець оновлення ---
+
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
@@ -122,12 +127,18 @@ fun NewsApp() {
                 )
             }
 
+            // +++ Додаємо новий екран в навігаційний граф +++
+            composable(route = Screen.AnalyticsScreen.route) {
+                AnalyticsScreen(viewModel = newsViewModel)
+            }
+
             composable(
                 route = Screen.ArticleDetailScreen.route,
                 arguments = listOf(navArgument(ARTICLE_ID_ARG) { type = NavType.IntType }),
                 deepLinks = listOf(navDeepLink { uriPattern = "https://www.mynewsapp.com/article/{$ARTICLE_ID_ARG}" })
             ) { backStackEntry ->
                 val articleId = backStackEntry.arguments?.getInt(ARTICLE_ID_ARG)
+                // Викликаємо getArticleById, який тепер шукає і в кеші, і в збережених
                 val article = articleId?.let { newsViewModel.getArticleById(it) }
 
                 if (article != null) {
@@ -142,8 +153,7 @@ fun NewsApp() {
     }
 }
 
-// +++ ФАБРИКА, ЯКА ВМІЄ СТВОРЮВАТИ NewsViewModel +++
-// Вона передає Application у конструктор ViewModel.
+// Фабрика для створення NewsViewModel
 class NewsViewModelFactory(private val application: Application) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(NewsViewModel::class.java)) {

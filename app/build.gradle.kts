@@ -77,6 +77,8 @@ dependencies {
     // Coil (для зображень)
     implementation(libs.coil.compose)
 
+    implementation(libs.vico.compose.m3)
+
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

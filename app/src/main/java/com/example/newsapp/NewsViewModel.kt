@@ -12,13 +12,13 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalCoroutinesApi::class)
 class NewsViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val newsRepository = NewsRepository()
     private val articleDao = AppDatabase.getDatabase(application).articleDao()
+    private val newsRepository = NewsRepository()
 
     private val _snackbarEvent = MutableSharedFlow<String>()
     val snackbarEvent: SharedFlow<String> = _snackbarEvent.asSharedFlow()
 
-    // --- Потоки з бази даних для лайків та збережень ---
+    // --- Потоки з бази даних ---
     val savedArticles: StateFlow<List<SavedArticleEntity>> = articleDao.getAllSavedArticles()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -26,18 +26,13 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
         .map { it.toSet() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
 
-    // --- РЕАКТИВНИЙ ПОТІК ДЛЯ ПАГІНАЦІЇ, ЩО ЗАЛЕЖИТЬ ВІД ДВОХ ПАРАМЕТРІВ ---
+    // --- Потоки для стрічки новин (пагінація) ---
     private val _selectedCategory = MutableStateFlow("general")
     val selectedCategory: StateFlow<String> = _selectedCategory.asStateFlow()
 
     private val _newsSource = MutableStateFlow(NewsSource.NEWS_API)
     val newsSource: StateFlow<NewsSource> = _newsSource.asStateFlow()
 
-    /**
-     * Основний потік даних для UI.
-     * Використовуємо `combine` для об'єднання двох потоків: обраної категорії та обраного джерела.
-     * `flatMapLatest` реагує на будь-яку зміну в цій парі та запускає новий запит до репозиторію.
-     */
     val articles: Flow<PagingData<Article>> = combine(
         _selectedCategory,
         _newsSource
@@ -47,28 +42,39 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
         newsRepository.getArticlesStream(source, category)
     }.cachedIn(viewModelScope)
 
+    // --- Потік для екрану аналітики ---
+    private val _categoryCounts = MutableStateFlow<List<Pair<String, Int>>>(emptyList())
+    val categoryCounts: StateFlow<List<Pair<String, Int>>> = _categoryCounts.asStateFlow()
 
-    /**
-     * Змінює поточну категорію.
-     */
+    init {
+        // Запускаємо корутину, яка буде слухати зміни в збережених статтях
+        // і автоматично оновлювати дані для графіка.
+        viewModelScope.launch {
+            savedArticles.collect { savedList ->
+                val counts = savedList
+                    .groupBy { it.category } // Групуємо статті за категорією
+                    .map { (category, articles) -> category to articles.size } // Рахуємо кількість у кожній групі
+                    .sortedByDescending { it.second } // Сортуємо (найбільші стовпці будуть зліва)
+                _categoryCounts.value = counts
+            }
+        }
+    }
+
+    // --- Функції, які викликає UI ---
+
     fun selectCategory(category: String) {
         _selectedCategory.value = category.lowercase()
     }
 
-    /**
-     * Змінює поточне джерело новин.
-     */
     fun selectNewsSource(source: NewsSource) {
         _newsSource.value = source
     }
 
-
-    // --- Функції для лайків та збережень (залишаються без змін) ---
-
     fun getArticleById(id: Int): Article? {
-        // Ця логіка залишається складною з пагінацією.
-        // Для простоти, шукаємо тільки у збережених.
+        // Пошук статті для екрану деталей
         val savedArticle = savedArticles.value.find { it.id == id }
+        // Ми не можемо надійно шукати в PagingData, тому шукаємо хоча б у збережених.
+        // Це обмеження, яке можна покращити, маючи повний кеш у БД.
         return savedArticle?.toArticle()
     }
 
