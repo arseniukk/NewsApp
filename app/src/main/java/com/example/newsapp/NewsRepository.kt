@@ -3,10 +3,7 @@ package com.example.newsapp
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
-import com.example.newsapp.network.ArticleDto
-import com.example.newsapp.network.NewsApi
-import com.example.newsapp.network.NewsPagingSource
-import com.example.newsapp.network.RssApi
+import com.example.newsapp.network.*
 import com.example.newsapp.rss.RssItem
 import kotlinx.coroutines.flow.Flow
 import java.text.SimpleDateFormat
@@ -18,6 +15,13 @@ enum class NewsSource {
 }
 
 class NewsRepository {
+
+    // Створюємо екземпляр WebSocket-слухача
+    private val priceWebSocketListener = PriceWebSocketListener()
+
+    /**
+     * Повертає потік даних для пагінації залежно від обраного джерела.
+     */
     fun getArticlesStream(source: NewsSource, category: String): Flow<PagingData<Article>> {
         return when (source) {
             NewsSource.NEWS_API -> {
@@ -33,6 +37,20 @@ class NewsRepository {
                 ).flow
             }
         }
+    }
+
+    /**
+     * Починає слухати оновлення цін через WebSocket і повертає Flow з рядками цін.
+     */
+    fun getPriceUpdates(): Flow<String> {
+        return priceWebSocketListener.startListening()
+    }
+
+    /**
+     * Зупиняє прослуховування WebSocket.
+     */
+    fun stopPriceUpdates() {
+        priceWebSocketListener.stopListening()
     }
 }
 

@@ -5,7 +5,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
+import androidx.paging.map
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -17,6 +19,9 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _snackbarEvent = MutableSharedFlow<String>()
     val snackbarEvent: SharedFlow<String> = _snackbarEvent.asSharedFlow()
+
+    // --- Тимчасовий кеш для статей, завантажених через пагінацію ---
+    private val articlesCache = mutableMapOf<Int, Article>()
 
     // --- Потоки з бази даних ---
     val savedArticles: StateFlow<List<SavedArticleEntity>> = articleDao.getAllSavedArticles()
@@ -40,21 +45,31 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
         Pair(category, source)
     }.flatMapLatest { (category, source) ->
         newsRepository.getArticlesStream(source, category)
+    }.map { pagingData ->
+        // Коли Paging завантажує дані, ми зберігаємо їх у наш кеш
+        pagingData.map { article ->
+            articlesCache[article.id] = article
+            article
+        }
     }.cachedIn(viewModelScope)
 
     // --- Потік для екрану аналітики ---
     private val _categoryCounts = MutableStateFlow<List<Pair<String, Int>>>(emptyList())
     val categoryCounts: StateFlow<List<Pair<String, Int>>> = _categoryCounts.asStateFlow()
 
+    // --- Потік для реалтайм-даних з WebSocket ---
+    private val _livePrice = MutableStateFlow<String?>(null)
+    val livePrice: StateFlow<String?> = _livePrice.asStateFlow()
+
+    private var priceJob: Job? = null
+
     init {
-        // Запускаємо корутину, яка буде слухати зміни в збережених статтях
-        // і автоматично оновлювати дані для графіка.
         viewModelScope.launch {
             savedArticles.collect { savedList ->
                 val counts = savedList
-                    .groupBy { it.category } // Групуємо статті за категорією
-                    .map { (category, articles) -> category to articles.size } // Рахуємо кількість у кожній групі
-                    .sortedByDescending { it.second } // Сортуємо (найбільші стовпці будуть зліва)
+                    .groupBy { it.category }
+                    .map { (category, articles) -> category to articles.size }
+                    .sortedByDescending { it.second }
                 _categoryCounts.value = counts
             }
         }
@@ -70,11 +85,16 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
         _newsSource.value = source
     }
 
+    /**
+     * Знаходить статтю за ID.
+     * Спочатку шукає в тимчасовому кеші, потім у списку збережених.
+     */
     fun getArticleById(id: Int): Article? {
-        // Пошук статті для екрану деталей
+        val cachedArticle = articlesCache[id]
+        if (cachedArticle != null) {
+            return cachedArticle
+        }
         val savedArticle = savedArticles.value.find { it.id == id }
-        // Ми не можемо надійно шукати в PagingData, тому шукаємо хоча б у збережених.
-        // Це обмеження, яке можна покращити, маючи повний кеш у БД.
         return savedArticle?.toArticle()
     }
 
@@ -104,5 +124,27 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
                 articleDao.insertLikedArticleId(LikedArticleId(id = article.id))
             }
         }
+    }
+
+    // --- Функції для управління WebSocket ---
+
+    fun startPriceMonitoring() {
+        if (priceJob?.isActive == true) return
+        priceJob = viewModelScope.launch {
+            newsRepository.getPriceUpdates().collect { price ->
+                _livePrice.value = price
+            }
+        }
+    }
+
+    fun stopPriceMonitoring() {
+        priceJob?.cancel()
+        newsRepository.stopPriceUpdates()
+        _livePrice.value = null
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        stopPriceMonitoring()
     }
 }

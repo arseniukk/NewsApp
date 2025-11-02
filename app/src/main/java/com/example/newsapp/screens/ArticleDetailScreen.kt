@@ -19,13 +19,14 @@ import coil.compose.AsyncImage
 import com.example.newsapp.Article
 import com.example.newsapp.LocationUtils
 import com.example.newsapp.NewsViewModel
-import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.maps.android.compose.GoogleMap
 import com.google.maps.android.compose.Marker
 import com.google.maps.android.compose.MarkerState
 import com.google.maps.android.compose.rememberCameraPositionState
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -35,25 +36,31 @@ fun ArticleDetailScreen(
     viewModel: NewsViewModel,
     onNavigateUp: () -> Unit
 ) {
+    // --- Підписка на потоки з ViewModel ---
     val isSaved by viewModel.isArticleSaved(article.id).collectAsState()
     val likedIds by viewModel.likedArticleIds.collectAsState()
     val isLiked = article.id in likedIds
+    val livePrice by viewModel.livePrice.collectAsState()
 
+    // --- Логіка для карти ---
     val context = LocalContext.current
     var locationLatLng by remember { mutableStateOf<LatLng?>(null) }
-    var locationName by remember { mutableStateOf<String?>(null) }
-    val coroutineScope = rememberCoroutineScope()
 
-    // Викликаємо Geocoding при першому відкритті екрану або при зміні статті
-    LaunchedEffect(key1 = article.id) {
-        // Запускаємо пошук координат у фоновій корутині
-        coroutineScope.launch {
-            val result = LocationUtils.getLatLngFromArticle(context, article)
-            if (result != null) {
-                locationLatLng = result
-                // Зберігаємо назву знайденого місця, щоб показати на маркері
-                locationName = LocationUtils.findFirstLocationInText(article)
-            }
+    // --- Управління життєвим циклом WebSocket та Карти ---
+    // DisposableEffect гарантує, що ресурси будуть звільнені, коли екран зникне.
+    DisposableEffect(article.id) { // Ключ - ID статті, щоб ефект перезапускався для нової статті
+        // 1. Запускаємо WebSocket
+        viewModel.startPriceMonitoring()
+
+        // 2. Запускаємо Geocoding в окремій корутині
+        val geocodingJob = CoroutineScope(Dispatchers.Main).launch {
+            locationLatLng = LocationUtils.getLatLngFromArticle(context, article)
+        }
+
+        // 3. Цей блок виконається, коли екран буде знищено
+        onDispose {
+            viewModel.stopPriceMonitoring() // Зупиняємо WebSocket
+            geocodingJob.cancel() // Скасовуємо корутину для карти, якщо вона ще працює
         }
     }
 
@@ -92,6 +99,7 @@ fun ArticleDetailScreen(
                 .padding(paddingValues)
                 .verticalScroll(rememberScrollState())
         ) {
+            // Зображення новини
             AsyncImage(
                 model = article.imageUrl,
                 contentDescription = "Зображення новини",
@@ -100,6 +108,8 @@ fun ArticleDetailScreen(
                     .aspectRatio(16f / 9f),
                 contentScale = ContentScale.Crop
             )
+
+            // Основний контент статті
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(article.title, style = MaterialTheme.typography.headlineLarge)
                 Spacer(Modifier.height(8.dp))
@@ -117,43 +127,47 @@ fun ArticleDetailScreen(
                 )
             }
 
-            // --- СЕКЦІЯ З КАРТОЮ ---
-            // Показуємо карту, тільки якщо координати були успішно знайдені
+            // Блок з реалтайм-даними (WebSocket)
+            Card(modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("Live Bitcoin Price (BTC-USD)", style = MaterialTheme.typography.titleMedium)
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = if (livePrice != null) "$$livePrice" else "Connecting...",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            // Блок з картою (Google Maps)
             if (locationLatLng != null) {
                 Spacer(Modifier.height(16.dp))
-                Text(
-                    "Місце події на карті",
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
+                Text("Місце події на карті", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 16.dp))
                 Spacer(Modifier.height(8.dp))
 
                 val cameraPositionState = rememberCameraPositionState {
                     position = CameraPosition.fromLatLngZoom(locationLatLng!!, 5f)
                 }
 
-                // Анімовано оновлюємо позицію камери, якщо координати змінилися
-                LaunchedEffect(locationLatLng) {
-                    locationLatLng?.let {
-                        cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(it, 5f))
-                    }
-                }
-
                 GoogleMap(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(250.dp)
+                        .height(200.dp)
                         .padding(horizontal = 16.dp),
                     cameraPositionState = cameraPositionState
                 ) {
                     Marker(
                         state = MarkerState(position = locationLatLng!!),
-                        title = locationName ?: "Місце події",
-                        snippet = article.title
+                        title = article.author,
+                        snippet = "Джерело новини"
                     )
                 }
-                Spacer(Modifier.height(16.dp))
             }
+            // Додаємо відступ знизу для кращого вигляду при скролі
+            Spacer(Modifier.height(16.dp))
         }
     }
 }
