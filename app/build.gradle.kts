@@ -1,8 +1,19 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.ksp)
     alias(libs.plugins.kotlin.serialization)
+}
+
+// Блок для зчитування API ключа з файлу local.properties
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.inputStream().use {
+        localProperties.load(it)
+    }
 }
 
 android {
@@ -16,6 +27,10 @@ android {
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // +++ Додаємо плейсхолдер для ключа Google Карт +++
+        // Він буде підставлений у AndroidManifest.xml
+        manifestPlaceholders["MAPS_API_KEY"] = localProperties.getProperty("MAPS_API_KEY") ?: ""
     }
 
     buildTypes {
@@ -72,12 +87,16 @@ dependencies {
     implementation(libs.okhttp.logging.interceptor)
     implementation(libs.retrofit.kotlinx.serialization.converter)
     implementation(libs.kotlinx.serialization.json)
-    implementation(libs.retrofit.converter.simplexml) // +++ Для парсингу XML
+    implementation(libs.retrofit.converter.simplexml)
 
     // Coil (для зображень)
     implementation(libs.coil.compose)
 
+    // Vico (для графіків)
     implementation(libs.vico.compose.m3)
+
+    // +++ Додаємо залежність для Google Карт +++
+    implementation(libs.maps.compose)
 
     // Testing
     testImplementation(libs.junit)

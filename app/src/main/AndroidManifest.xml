@@ -2,11 +2,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Дозвіл на доступ до Інтернету -->
+    <!-- Дозвіл на доступ до Інтернету (вже є) -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <application
+    <!-- Дозволи для геолокації (опціонально, але корисно для майбутнього) -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
+    <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -16,6 +19,18 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.NewsApp"
         tools:targetApi="31">
+
+        <!-- +++ ДОДАЙТЕ ЦЕЙ БЛОК ДЛЯ GOOGLE MAPS API КЛЮЧА +++ -->
+        <!-- Ключ буде автоматично підставлено з build.gradle -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="${MAPS_API_KEY}" />
+
+        <!-- +++ Цей тег також потрібен для деяких сервісів Google +++ -->
+        <uses-library
+            android:name="org.apache.http.legacy"
+            android:required="false" />
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

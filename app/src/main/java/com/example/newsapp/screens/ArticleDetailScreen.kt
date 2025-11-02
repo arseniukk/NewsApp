@@ -10,15 +10,23 @@ import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.newsapp.Article
+import com.example.newsapp.LocationUtils
 import com.example.newsapp.NewsViewModel
+import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.model.LatLng
+import com.google.maps.android.compose.GoogleMap
+import com.google.maps.android.compose.Marker
+import com.google.maps.android.compose.MarkerState
+import com.google.maps.android.compose.rememberCameraPositionState
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,6 +38,24 @@ fun ArticleDetailScreen(
     val isSaved by viewModel.isArticleSaved(article.id).collectAsState()
     val likedIds by viewModel.likedArticleIds.collectAsState()
     val isLiked = article.id in likedIds
+
+    val context = LocalContext.current
+    var locationLatLng by remember { mutableStateOf<LatLng?>(null) }
+    var locationName by remember { mutableStateOf<String?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+
+    // Викликаємо Geocoding при першому відкритті екрану або при зміні статті
+    LaunchedEffect(key1 = article.id) {
+        // Запускаємо пошук координат у фоновій корутині
+        coroutineScope.launch {
+            val result = LocationUtils.getLatLngFromArticle(context, article)
+            if (result != null) {
+                locationLatLng = result
+                // Зберігаємо назву знайденого місця, щоб показати на маркері
+                locationName = LocationUtils.findFirstLocationInText(article)
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -89,6 +115,44 @@ fun ArticleDetailScreen(
                     text = article.description + "\n\n" + (article.description.takeIf { it.length > 10 } ?: ""),
                     style = MaterialTheme.typography.bodyLarge
                 )
+            }
+
+            // --- СЕКЦІЯ З КАРТОЮ ---
+            // Показуємо карту, тільки якщо координати були успішно знайдені
+            if (locationLatLng != null) {
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    "Місце події на карті",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(horizontal = 16.dp)
+                )
+                Spacer(Modifier.height(8.dp))
+
+                val cameraPositionState = rememberCameraPositionState {
+                    position = CameraPosition.fromLatLngZoom(locationLatLng!!, 5f)
+                }
+
+                // Анімовано оновлюємо позицію камери, якщо координати змінилися
+                LaunchedEffect(locationLatLng) {
+                    locationLatLng?.let {
+                        cameraPositionState.animate(CameraUpdateFactory.newLatLngZoom(it, 5f))
+                    }
+                }
+
+                GoogleMap(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(250.dp)
+                        .padding(horizontal = 16.dp),
+                    cameraPositionState = cameraPositionState
+                ) {
+                    Marker(
+                        state = MarkerState(position = locationLatLng!!),
+                        title = locationName ?: "Місце події",
+                        snippet = article.title
+                    )
+                }
+                Spacer(Modifier.height(16.dp))
             }
         }
     }
