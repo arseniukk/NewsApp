@@ -2,12 +2,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Дозвіл на доступ до Інтернету (вже є) -->
+    <!-- Дозвіл на доступ до Інтернету -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- Дозволи для геолокації (опціонально, але корисно для майбутнього) -->
+    <!-- Дозволи для геолокації -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+
+    <!-- +++ ДОЗВІЛ ДЛЯ BLUETOOTH (ДЛЯ ANDROID 12+) +++ -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
     <application
         android:allowBackup="true"
@@ -20,13 +23,13 @@
         android:theme="@style/Theme.NewsApp"
         tools:targetApi="31">
 
-        <!-- +++ ДОДАЙТЕ ЦЕЙ БЛОК ДЛЯ GOOGLE MAPS API КЛЮЧА +++ -->
-        <!-- Ключ буде автоматично підставлено з build.gradle -->
+
+        <!-- Ключ для Google Maps API -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="${MAPS_API_KEY}" />
 
-        <!-- +++ Цей тег також потрібен для деяких сервісів Google +++ -->
+        <!-- Тег для сумісності деяких сервісів Google -->
         <uses-library
             android:name="org.apache.http.legacy"
             android:required="false" />
