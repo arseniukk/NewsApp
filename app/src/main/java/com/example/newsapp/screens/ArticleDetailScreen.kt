@@ -1,5 +1,13 @@
 package com.example.newsapp.screens
 
+import android.Manifest
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -7,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.*
@@ -42,25 +51,48 @@ fun ArticleDetailScreen(
     val isLiked = article.id in likedIds
     val livePrice by viewModel.livePrice.collectAsState()
 
-    // --- Логіка для карти ---
+    // --- Логіка для карти, WebSocket та Bluetooth ---
     val context = LocalContext.current
     var locationLatLng by remember { mutableStateOf<LatLng?>(null) }
+    val bluetoothManager = remember { context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager }
+    val bluetoothAdapter: BluetoothAdapter? = remember { bluetoothManager?.adapter }
 
-    // --- Управління життєвим циклом WebSocket та Карти ---
-    // DisposableEffect гарантує, що ресурси будуть звільнені, коли екран зникне.
-    DisposableEffect(article.id) { // Ключ - ID статті, щоб ефект перезапускався для нової статті
-        // 1. Запускаємо WebSocket
+    // Лаунчер для запиту на увімкнення Bluetooth
+    val enableBluetoothLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {}
+
+    // Функція для запуску системного меню "Поділитися"
+    fun shareArticle(articleToShare: Article) {
+        val sendIntent: Intent = Intent().apply {
+            action = Intent.ACTION_SEND
+            // Формуємо текст для поширення
+            putExtra(Intent.EXTRA_TEXT, "${articleToShare.title}\n\n(Посилання-заглушка для демонстрації)")
+            type = "text/plain"
+        }
+        val shareIntent = Intent.createChooser(sendIntent, null)
+        context.startActivity(shareIntent)
+    }
+
+    // Лаунчер для запиту дозволу BLUETOOTH_CONNECT (для Android 12+)
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
+        if (isGranted) {
+            if (bluetoothAdapter?.isEnabled == true) {
+                shareArticle(article)
+            } else {
+                val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+                enableBluetoothLauncher.launch(enableBtIntent)
+            }
+        }
+    }
+
+    // Управління життєвим циклом WebSocket та Карти
+    DisposableEffect(article.id) {
         viewModel.startPriceMonitoring()
-
-        // 2. Запускаємо Geocoding в окремій корутині
         val geocodingJob = CoroutineScope(Dispatchers.Main).launch {
             locationLatLng = LocationUtils.getLatLngFromArticle(context, article)
         }
-
-        // 3. Цей блок виконається, коли екран буде знищено
         onDispose {
-            viewModel.stopPriceMonitoring() // Зупиняємо WebSocket
-            geocodingJob.cancel() // Скасовуємо корутину для карти, якщо вона ще працює
+            viewModel.stopPriceMonitoring()
+            geocodingJob.cancel()
         }
     }
 
@@ -70,19 +102,33 @@ fun ArticleDetailScreen(
                 title = { Text(article.category, style = MaterialTheme.typography.titleMedium) },
                 navigationIcon = {
                     IconButton(onClick = onNavigateUp) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Назад"
-                        )
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
                     }
                 },
                 actions = {
+                    // Кнопка "Поділитися"
+                    IconButton(onClick = {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            permissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+                        } else {
+                            if (bluetoothAdapter?.isEnabled == true) {
+                                shareArticle(article)
+                            } else {
+                                val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+                                enableBluetoothLauncher.launch(enableBtIntent)
+                            }
+                        }
+                    }) {
+                        Icon(Icons.Default.Share, contentDescription = "Поділитися")
+                    }
+                    // Кнопка "Лайк"
                     IconButton(onClick = { viewModel.toggleLikeArticle(article) }) {
                         Icon(
                             imageVector = if (isLiked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
                             contentDescription = "Лайк"
                         )
                     }
+                    // Кнопка "Зберегти"
                     IconButton(onClick = { viewModel.toggleSaveArticle(article) }) {
                         Icon(
                             imageVector = if (isSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
