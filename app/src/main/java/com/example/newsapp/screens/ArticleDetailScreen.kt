@@ -21,8 +21,10 @@ import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.example.newsapp.Article
@@ -45,26 +47,24 @@ fun ArticleDetailScreen(
     viewModel: NewsViewModel,
     onNavigateUp: () -> Unit
 ) {
-    // --- Підписка на потоки з ViewModel ---
     val isSaved by viewModel.isArticleSaved(article.id).collectAsState()
     val likedIds by viewModel.likedArticleIds.collectAsState()
     val isLiked = article.id in likedIds
     val livePrice by viewModel.livePrice.collectAsState()
 
-    // --- Логіка для карти, WebSocket та Bluetooth ---
     val context = LocalContext.current
     var locationLatLng by remember { mutableStateOf<LatLng?>(null) }
     val bluetoothManager = remember { context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager }
     val bluetoothAdapter: BluetoothAdapter? = remember { bluetoothManager?.adapter }
 
-    // Лаунчер для запиту на увімкнення Bluetooth
+    // +++ ОТРИМУЄМО ДОСТУП ДО СИСТЕМИ ВІБРАЦІЇ +++
+    val haptics = LocalHapticFeedback.current
+
     val enableBluetoothLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {}
 
-    // Функція для запуску системного меню "Поділитися"
     fun shareArticle(articleToShare: Article) {
         val sendIntent: Intent = Intent().apply {
             action = Intent.ACTION_SEND
-            // Формуємо текст для поширення
             putExtra(Intent.EXTRA_TEXT, "${articleToShare.title}\n\n(Посилання-заглушка для демонстрації)")
             type = "text/plain"
         }
@@ -72,7 +72,6 @@ fun ArticleDetailScreen(
         context.startActivity(shareIntent)
     }
 
-    // Лаунчер для запиту дозволу BLUETOOTH_CONNECT (для Android 12+)
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted: Boolean ->
         if (isGranted) {
             if (bluetoothAdapter?.isEnabled == true) {
@@ -84,7 +83,6 @@ fun ArticleDetailScreen(
         }
     }
 
-    // Управління життєвим циклом WebSocket та Карти
     DisposableEffect(article.id) {
         viewModel.startPriceMonitoring()
         val geocodingJob = CoroutineScope(Dispatchers.Main).launch {
@@ -106,7 +104,6 @@ fun ArticleDetailScreen(
                     }
                 },
                 actions = {
-                    // Кнопка "Поділитися"
                     IconButton(onClick = {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                             permissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
@@ -121,15 +118,17 @@ fun ArticleDetailScreen(
                     }) {
                         Icon(Icons.Default.Share, contentDescription = "Поділитися")
                     }
-                    // Кнопка "Лайк"
                     IconButton(onClick = { viewModel.toggleLikeArticle(article) }) {
                         Icon(
                             imageVector = if (isLiked) Icons.Filled.ThumbUp else Icons.Outlined.ThumbUp,
                             contentDescription = "Лайк"
                         )
                     }
-                    // Кнопка "Зберегти"
-                    IconButton(onClick = { viewModel.toggleSaveArticle(article) }) {
+                    // +++ ДОДАЄМО ВІБРАЦІЮ ПРИ ЗБЕРЕЖЕННІ +++
+                    IconButton(onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        viewModel.toggleSaveArticle(article)
+                    }) {
                         Icon(
                             imageVector = if (isSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
                             contentDescription = "Зберегти"
@@ -145,7 +144,6 @@ fun ArticleDetailScreen(
                 .padding(paddingValues)
                 .verticalScroll(rememberScrollState())
         ) {
-            // Зображення новини
             AsyncImage(
                 model = article.imageUrl,
                 contentDescription = "Зображення новини",
@@ -155,7 +153,6 @@ fun ArticleDetailScreen(
                 contentScale = ContentScale.Crop
             )
 
-            // Основний контент статті
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(article.title, style = MaterialTheme.typography.headlineLarge)
                 Spacer(Modifier.height(8.dp))
@@ -173,7 +170,6 @@ fun ArticleDetailScreen(
                 )
             }
 
-            // Блок з реалтайм-даними (WebSocket)
             Card(modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)) {
@@ -188,7 +184,6 @@ fun ArticleDetailScreen(
                 }
             }
 
-            // Блок з картою (Google Maps)
             if (locationLatLng != null) {
                 Spacer(Modifier.height(16.dp))
                 Text("Місце події на карті", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 16.dp))
@@ -212,7 +207,6 @@ fun ArticleDetailScreen(
                     )
                 }
             }
-            // Додаємо відступ знизу для кращого вигляду при скролі
             Spacer(Modifier.height(16.dp))
         }
     }

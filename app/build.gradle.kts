@@ -88,6 +88,7 @@ dependencies {
     implementation(libs.retrofit.kotlinx.serialization.converter)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.retrofit.converter.simplexml)
+    implementation(libs.zxing.core)
 
     // Coil (для зображень)
     implementation(libs.coil.compose)

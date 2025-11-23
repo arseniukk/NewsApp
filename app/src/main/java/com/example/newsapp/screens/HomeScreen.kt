@@ -1,5 +1,10 @@
 package com.example.newsapp.screens
 
+import android.content.Context
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -11,13 +16,13 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.paging.LoadState
@@ -26,6 +31,8 @@ import coil.compose.AsyncImage
 import com.example.newsapp.Article
 import com.example.newsapp.NewsSource
 import com.example.newsapp.NewsViewModel
+import kotlin.math.pow
+import kotlin.math.sqrt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,6 +47,65 @@ fun HomeScreen(
     val savedArticleIds = savedArticles.map { it.id }.toSet()
     val likedArticleIds by viewModel.likedArticleIds.collectAsState()
     val categories = listOf("General", "Business", "Technology", "Sports", "Science")
+
+    // --- ЛОГІКА ДЛЯ SHAKE-TO-REFRESH ---
+    val context = LocalContext.current
+    val haptics = LocalHapticFeedback.current
+
+    DisposableEffect(Unit) {
+        val sensorManager = context.getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        val accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+
+        var lastUpdateTime: Long = 0
+        var lastShakeTime: Long = 0
+        var lastX = 0f
+        var lastY = 0f
+        var lastZ = 0f
+        val shakeThreshold = 12f // Чутливість
+        val shakeCooldown = 1000 // 1 секунда між струсами
+
+        val sensorListener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent?) {
+                val currentTime = System.currentTimeMillis()
+                if ((currentTime - lastUpdateTime) > 100) {
+                    val diffTime = currentTime - lastUpdateTime
+                    lastUpdateTime = currentTime
+
+                    val x = event?.values?.get(0) ?: 0f
+                    val y = event?.values?.get(1) ?: 0f
+                    val z = event?.values?.get(2) ?: 0f
+
+                    val speed = sqrt((x - lastX).pow(2) + (y - lastY).pow(2) + (z - lastZ).pow(2)) / diffTime * 10000
+
+                    if (speed > shakeThreshold) {
+                        if (currentTime - lastShakeTime > shakeCooldown) {
+                            lastShakeTime = currentTime
+                            // Вібруємо
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+
+                            // --- ВИПРАВЛЕННЯ ТУТ ---
+                            // Видалено: viewModel.refreshCurrentCategory()
+                            // Залишаємо тільки це:
+                            lazyPagingItems.refresh() // Оновлюємо список через Paging
+                        }
+                    }
+                    lastX = x
+                    lastY = y
+                    lastZ = z
+                }
+            }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+
+        if (accelerometer != null) {
+            sensorManager.registerListener(sensorListener, accelerometer, SensorManager.SENSOR_DELAY_NORMAL)
+        }
+
+        onDispose {
+            sensorManager.unregisterListener(sensorListener)
+        }
+    }
+    // --- КІНЕЦЬ ЛОГІКИ SHAKE-TO-REFRESH ---
 
     Scaffold(
         topBar = { CenterAlignedTopAppBar(title = { Text("Мої Новини") }) }
@@ -157,32 +223,20 @@ fun NewsItem(
     onSaveClick: () -> Unit
 ) {
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onItemClick),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onItemClick),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column {
-            // --- ОСЬ ВИПРАВЛЕННЯ ---
             if (article.imageUrl != null) {
                 AsyncImage(
                     model = article.imageUrl,
-                    contentDescription = "Зображення новини",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(16f / 9f),
+                    contentDescription = null,
+                    modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f),
                     contentScale = ContentScale.Crop
                 )
             } else {
-                // Якщо URL зображення немає, показуємо заглушку
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(16f / 9f)
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                )
+                Box(modifier = Modifier.fillMaxWidth().aspectRatio(16f / 9f).background(MaterialTheme.colorScheme.surfaceVariant))
             }
-            // --- КІНЕЦЬ ВИПРАВЛЕННЯ ---
 
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(article.title, style = MaterialTheme.typography.titleLarge)
@@ -195,45 +249,17 @@ fun NewsItem(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "by ${article.author}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = article.date,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = "by ${article.author}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(text = article.date, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Spacer(Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = onSaveClick) {
-                        Icon(
-                            imageVector = if (isSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder,
-                            contentDescription = "Зберегти",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Icon(imageVector = if (isSaved) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, contentDescription = "Зберегти", tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Spacer(Modifier.width(8.dp))
-                    Button(
-                        onClick = onLikeClick,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
-                            contentColor = if (isLiked) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    ) {
+                    Button(onClick = onLikeClick, colors = ButtonDefaults.buttonColors(containerColor = if (isLiked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant, contentColor = if (isLiked) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)) {
                         Icon(Icons.Default.ThumbUp, contentDescription = "Like")
                         Spacer(Modifier.width(8.dp))
                         Text("Like")

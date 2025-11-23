@@ -2,15 +2,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Дозвіл на доступ до Інтернету -->
+    <!-- Дозвіл на доступ до Інтернету (необхідний для мережі та карт) -->
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- Дозволи для геолокації -->
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-
-    <!-- +++ ДОЗВІЛ ДЛЯ BLUETOOTH (ДЛЯ ANDROID 12+) +++ -->
+    <!-- Дозвіл для Bluetooth (для Android 12+) -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <!-- Дозвіл на вібрацію (для тактильного відгуку) -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
 
     <application
         android:allowBackup="true"
@@ -23,16 +23,10 @@
         android:theme="@style/Theme.NewsApp"
         tools:targetApi="31">
 
-
         <!-- Ключ для Google Maps API -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="${MAPS_API_KEY}" />
-
-        <!-- Тег для сумісності деяких сервісів Google -->
-        <uses-library
-            android:name="org.apache.http.legacy"
-            android:required="false" />
 
         <activity
             android:name=".MainActivity"
