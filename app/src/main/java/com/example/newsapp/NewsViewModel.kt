@@ -17,8 +17,13 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
     private val articleDao = AppDatabase.getDatabase(application).articleDao()
     private val newsRepository = NewsRepository()
 
+    // Загальний канал для повідомлень (Snackbar)
     private val _snackbarEvent = MutableSharedFlow<String>()
     val snackbarEvent: SharedFlow<String> = _snackbarEvent.asSharedFlow()
+
+    // --- MQTT СТАТУС (НОВЕ ДЛЯ ЗАВДАННЯ 20) ---
+    private val _mqttStatus = MutableSharedFlow<String>()
+    val mqttStatus: SharedFlow<String> = _mqttStatus.asSharedFlow()
 
     // --- Тимчасовий кеш для статей, завантажених через пагінацію ---
     private val articlesCache = mutableMapOf<Int, Article>()
@@ -46,7 +51,7 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
     }.flatMapLatest { (category, source) ->
         newsRepository.getArticlesStream(source, category)
     }.map { pagingData ->
-        // Коли Paging завантажує дані, ми зберігаємо їх у наш кеш
+        // Коли Paging завантажує дані, ми зберігаємо їх у наш кеш для швидкого доступу
         pagingData.map { article ->
             articlesCache[article.id] = article
             article
@@ -64,6 +69,7 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
     private var priceJob: Job? = null
 
     init {
+        // Запускаємо розрахунок статистики для графіка
         viewModelScope.launch {
             savedArticles.collect { savedList ->
                 val counts = savedList
@@ -146,5 +152,20 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         stopPriceMonitoring()
+    }
+
+    // --- Функції для MQTT (IoT) ---
+
+    fun sendSmartHomeAlert() {
+        viewModelScope.launch {
+            _mqttStatus.emit("Sending alert...")
+            // Викликаємо наш MqttManager
+            val success = MqttManager.connectAndPublish("ALERT: Breaking News Received! Color: RED")
+            if (success) {
+                _mqttStatus.emit("Сигнал тривоги відправлено на лампу!")
+            } else {
+                _mqttStatus.emit("Помилка підключення до розумного будинку")
+            }
+        }
     }
 }

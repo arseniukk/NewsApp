@@ -8,11 +8,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -20,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.newsapp.NewsViewModel
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -28,10 +30,24 @@ fun DashboardScreen(viewModel: NewsViewModel) {
     val savedArticlesCount by viewModel.savedArticles.collectAsState()
     val likedArticlesCount by viewModel.likedArticleIds.collectAsState()
 
+    // Стан для відображення результату відправки MQTT
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
+    // Слухаємо події MQTT з ViewModel
+    LaunchedEffect(Unit) {
+        viewModel.mqttStatus.collect { message ->
+            scope.launch {
+                snackbarHostState.showSnackbar(message)
+            }
+        }
+    }
+
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(title = { Text("Моя активність") })
-        }
+            CenterAlignedTopAppBar(title = { Text("Моя активність та IoT") })
+        },
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { paddingValues ->
         Column(
             modifier = Modifier
@@ -41,7 +57,34 @@ fun DashboardScreen(viewModel: NewsViewModel) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // --- Секція з круговою діаграмою ---
+            // --- IoT СЕКЦІЯ (ЗАВДАННЯ 20) ---
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Lightbulb, contentDescription = "IoT")
+                        Spacer(Modifier.width(8.dp))
+                        Text("Розумний дім", style = MaterialTheme.typography.titleLarge)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Інтеграція з системою освітлення. Натисніть, щоб імітувати термінову новину.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Button(
+                        onClick = { viewModel.sendSmartHomeAlert() },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
+                    ) {
+                        Text("🚨 Надіслати сигнал тривоги (MQTT)")
+                    }
+                }
+            }
+
+            // --- Секція з круговою діаграмою (ЗАВДАННЯ 14) ---
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Збережені статті за категоріями", style = MaterialTheme.typography.titleLarge)
@@ -54,7 +97,7 @@ fun DashboardScreen(viewModel: NewsViewModel) {
                 }
             }
 
-            // --- Секція з індикатором прогресу ---
+            // --- Секція з індикатором прогресу (ЗАВДАННЯ 14) ---
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("Співвідношення активності", style = MaterialTheme.typography.titleLarge)
@@ -96,8 +139,6 @@ fun DonutChart(
         MaterialTheme.colorScheme.secondaryContainer
     )
 
-    // --- ОСЬ ВИПРАВЛЕННЯ ---
-    // Використовуємо Animatable з великої літери
     val animatedProgress = remember { Animatable(0f) }
     LaunchedEffect(data) {
         animatedProgress.animateTo(1f, animationSpec = tween(durationMillis = 1000))
