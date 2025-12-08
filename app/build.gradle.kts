@@ -7,7 +7,7 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-// Блок для зчитування API ключа з файлу local.properties
+// Блок для зчитування API ключів з файлу local.properties
 val localProperties = Properties()
 val localPropertiesFile = rootProject.file("local.properties")
 if (localPropertiesFile.exists()) {
@@ -28,17 +28,31 @@ android {
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // +++ Додаємо плейсхолдер для ключа Google Карт +++
-        // Він буде підставлений у AndroidManifest.xml
+        // Плейсхолдер для ключа Google Карт
         manifestPlaceholders["MAPS_API_KEY"] = localProperties.getProperty("MAPS_API_KEY") ?: ""
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            // --- НАЛАШТУВАННЯ ДЛЯ ЗАВДАННЯ 22 (ОПТИМІЗАЦІЯ) ---
+
+            // Вмикаємо R8: стиснення коду та обфускація
+            isMinifyEnabled = true
+
+            // Вмикаємо видалення невикористовуваних ресурсів
+            isShrinkResources = true
+
+            // Файли з правилами ProGuard/R8
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+
+            // ЛАЙФХАК: Підписуємо релізну збірку ключем дебагу
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
@@ -60,8 +74,10 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation(libs.paho.mqtt)
-    implementation(libs.androidx.biometric)
+
+    // Security & Hardware
+    implementation(libs.androidx.biometric) // Біометрія
+    implementation(libs.paho.mqtt)         // MQTT
 
     // Compose
     implementation(platform(libs.androidx.compose.bom))
@@ -89,16 +105,26 @@ dependencies {
     implementation(libs.okhttp.logging.interceptor)
     implementation(libs.retrofit.kotlinx.serialization.converter)
     implementation(libs.kotlinx.serialization.json)
-    implementation(libs.retrofit.converter.simplexml)
+
+    // --- ВИПРАВЛЕННЯ КОНФЛІКТУ XML ---
+    // Підключаємо SimpleXML, але виключаємо старі бібліотеки xpp3/stax,
+    // які вже є в Android.
+    implementation(libs.retrofit.converter.simplexml) {
+        exclude(group = "xpp3", module = "xpp3")
+        exclude(group = "stax", module = "stax-api")
+        exclude(group = "stax", module = "stax")
+    }
+
+    // QR Codes
     implementation(libs.zxing.core)
 
-    // Coil (для зображень)
+    // Coil
     implementation(libs.coil.compose)
 
-    // Vico (для графіків)
+    // Vico
     implementation(libs.vico.compose.m3)
 
-    // +++ Додаємо залежність для Google Карт +++
+    // Google Maps
     implementation(libs.maps.compose)
 
     // Testing
