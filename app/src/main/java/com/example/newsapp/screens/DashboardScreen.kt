@@ -9,6 +9,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -30,7 +31,6 @@ fun DashboardScreen(viewModel: NewsViewModel) {
     val savedArticlesCount by viewModel.savedArticles.collectAsState()
     val likedArticlesCount by viewModel.likedArticleIds.collectAsState()
 
-    // Стан для відображення результату відправки MQTT
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
 
@@ -45,7 +45,7 @@ fun DashboardScreen(viewModel: NewsViewModel) {
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(title = { Text("Моя активність та IoT") })
+            CenterAlignedTopAppBar(title = { Text("Мої активність та IoT") })
         },
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
     ) { paddingValues ->
@@ -57,6 +57,36 @@ fun DashboardScreen(viewModel: NewsViewModel) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // --- СЕКЦІЯ ТЕСТУВАННЯ КРЕШІВ (ЗАВДАННЯ 24) ---
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.BugReport, contentDescription = "Crash")
+                        Spacer(Modifier.width(8.dp))
+                        Text("Crash Test", style = MaterialTheme.typography.titleLarge)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Натисніть кнопку нижче, щоб перевірити роботу GlobalExceptionHandler (додаток перезапуститься).",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            // Штучно викликаємо критичну помилку
+                            throw RuntimeException("Test Crash from Dashboard!")
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("💀 Викликати помилку")
+                    }
+                }
+            }
+
             // --- IoT СЕКЦІЯ (ЗАВДАННЯ 20) ---
             Card(
                 modifier = Modifier.fillMaxWidth(),
