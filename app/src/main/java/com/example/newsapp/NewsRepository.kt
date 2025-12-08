@@ -131,7 +131,9 @@ fun ArticleDto.toArticleEntity(category: String): ArticleEntity? {
     )
 }
 
-private fun formatDate(dateString: String): String {
+// --- ФУНКЦІЇ ФОРМАТУВАННЯ (Public для тестування) ---
+
+fun formatDate(dateString: String): String {
     return try {
         SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault()).parse(dateString)?.let {
             SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(it)
@@ -141,7 +143,7 @@ private fun formatDate(dateString: String): String {
     }
 }
 
-private fun formatDateRss(dateString: String): String {
+fun formatDateRss(dateString: String): String {
     return try {
         SimpleDateFormat("EEE, dd MMM yyyy HH:mm:ss Z", Locale.ENGLISH).parse(dateString)?.let {
             SimpleDateFormat("dd.MM.yyyy", Locale.getDefault()).format(it)
