@@ -61,6 +61,7 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.paho.mqtt)
+    implementation(libs.androidx.biometric)
 
     // Compose
     implementation(platform(libs.androidx.compose.bom))

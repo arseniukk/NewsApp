@@ -2,7 +2,6 @@ package com.example.newsapp
 
 import android.app.Application
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,6 +16,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.fragment.app.FragmentActivity // +++ ВАЖЛИВИЙ ІМПОРТ ДЛЯ БІОМЕТРІЇ
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -27,6 +27,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.navigation.navDeepLink
 import com.example.newsapp.screens.AnalyticsScreen
 import com.example.newsapp.screens.ArticleDetailScreen
 import com.example.newsapp.screens.DashboardScreen
@@ -35,7 +36,8 @@ import com.example.newsapp.screens.SavedScreen
 import com.example.newsapp.ui.theme.NewsAppTheme
 import kotlinx.coroutines.launch
 
-class MainActivity : ComponentActivity() {
+// Змінюємо ComponentActivity на FragmentActivity для підтримки BiometricPrompt
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -55,6 +57,8 @@ class MainActivity : ComponentActivity() {
 fun NewsApp() {
     val navController = rememberNavController()
     val context = LocalContext.current
+
+    // Створюємо ViewModel через фабрику
     val newsViewModel: NewsViewModel = viewModel(
         factory = NewsViewModelFactory(context.applicationContext as Application)
     )
@@ -140,10 +144,11 @@ fun NewsApp() {
 
             composable(
                 route = Screen.ArticleDetailScreen.route,
-                arguments = listOf(navArgument(ARTICLE_ID_ARG) { type = NavType.IntType })
-                // Deep link видалено для спрощення, ви можете його повернути
+                arguments = listOf(navArgument(ARTICLE_ID_ARG) { type = NavType.IntType }),
+                deepLinks = listOf(navDeepLink { uriPattern = "https://www.mynewsapp.com/article/{$ARTICLE_ID_ARG}" })
             ) { backStackEntry ->
                 val articleId = backStackEntry.arguments?.getInt(ARTICLE_ID_ARG)
+                // Викликаємо getArticleById, який шукає в кеші та збережених
                 val article = articleId?.let { newsViewModel.getArticleById(it) }
 
                 if (article != null) {
@@ -162,6 +167,7 @@ fun NewsApp() {
     }
 }
 
+// Фабрика для створення NewsViewModel
 class NewsViewModelFactory(private val application: Application) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(NewsViewModel::class.java)) {
