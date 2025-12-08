@@ -1,0 +1,37 @@
+name: Android CI
+
+# Коли запускати цей процес: при кожному push або pull request у гілку master (або main)
+on:
+  push:
+    branches: [ "master", "main" ]
+  pull_request:
+    branches: [ "master", "main" ]
+
+jobs:
+  build:
+    # На якій віртуальній машині запускати (Linux - стандарт для Android збірок)
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Завантажуємо код з репозиторію
+      - uses: actions/checkout@v4
+
+      # 2. Встановлюємо Java (потрібна для Gradle)
+      - name: set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
+
+      # 3. Даємо права на виконання файлу gradlew
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      # 4. Запускаємо Unit-тести (ті, що ми писали в Модулі 5)
+      - name: Run Unit Tests
+        run: ./gradlew testDebugUnitTest
+
+      # 5. Пробуємо зібрати Debug версію (щоб переконатися, що код компілюється)
+      - name: Build with Gradle
+        run: ./gradlew assembleDebug
