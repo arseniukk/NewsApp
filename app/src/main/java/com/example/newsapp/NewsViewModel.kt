@@ -10,6 +10,8 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class NewsViewModel(application: Application) : AndroidViewModel(application) {
@@ -21,12 +23,15 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
     private val _snackbarEvent = MutableSharedFlow<String>()
     val snackbarEvent: SharedFlow<String> = _snackbarEvent.asSharedFlow()
 
-    // --- MQTT СТАТУС (НОВЕ ДЛЯ ЗАВДАННЯ 20) ---
+    // --- MQTT СТАТУС (IoT) ---
     private val _mqttStatus = MutableSharedFlow<String>()
     val mqttStatus: SharedFlow<String> = _mqttStatus.asSharedFlow()
 
     // --- Тимчасовий кеш для статей, завантажених через пагінацію ---
     private val articlesCache = mutableMapOf<Int, Article>()
+
+    // --- JSON Форматер для експорту ---
+    private val jsonFormatter = Json { prettyPrint = true }
 
     // --- Потоки з бази даних ---
     val savedArticles: StateFlow<List<SavedArticleEntity>> = articleDao.getAllSavedArticles()
@@ -132,7 +137,17 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // --- Функції для управління WebSocket ---
+    // --- Функція для експорту даних (Завдання 26) ---
+    fun getSavedArticlesJson(): String {
+        val articles = savedArticles.value
+        return if (articles.isNotEmpty()) {
+            jsonFormatter.encodeToString(articles)
+        } else {
+            "[]" // Повертаємо порожній масив JSON, якщо немає статей
+        }
+    }
+
+    // --- Функції для управління WebSocket (Завдання 16) ---
 
     fun startPriceMonitoring() {
         if (priceJob?.isActive == true) return
@@ -154,7 +169,7 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
         stopPriceMonitoring()
     }
 
-    // --- Функції для MQTT (IoT) ---
+    // --- Функції для MQTT (IoT - Завдання 20) ---
 
     fun sendSmartHomeAlert() {
         viewModelScope.launch {

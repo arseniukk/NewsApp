@@ -1,11 +1,13 @@
 package com.example.newsapp.screens
 
+import android.content.Intent
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Output // +++ Іконка експорту
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,73 +28,72 @@ fun SavedScreen(
     val savedArticles by viewModel.savedArticles.collectAsState()
     val likedArticleIds by viewModel.likedArticleIds.collectAsState()
 
-    // --- СТАН БЛОКУВАННЯ ---
     var isAuthenticated by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val biometricAuthenticator = remember { BiometricAuthenticator(context) }
 
-    // Функція для запуску біометрії
     fun authenticate() {
         if (biometricAuthenticator.canAuthenticate()) {
             biometricAuthenticator.promptBiometricAuth(
                 title = "Доступ до збережених",
                 subTitle = "Підтвердіть особу для перегляду",
                 negativeButtonText = "Скасувати",
-                onSuccess = {
-                    isAuthenticated = true
-                },
-                onError = { _, errorString ->
-                    Toast.makeText(context, "Помилка: $errorString", Toast.LENGTH_SHORT).show()
-                },
-                onFailed = {
-                    Toast.makeText(context, "Не розпізнано", Toast.LENGTH_SHORT).show()
-                }
+                onSuccess = { isAuthenticated = true },
+                onError = { _, errorString -> Toast.makeText(context, "Помилка: $errorString", Toast.LENGTH_SHORT).show() },
+                onFailed = { Toast.makeText(context, "Не розпізнано", Toast.LENGTH_SHORT).show() }
             )
         } else {
-            // Якщо біометрія недоступна, просто пускаємо (або показуємо помилку)
             isAuthenticated = true
             Toast.makeText(context, "Біометрія недоступна", Toast.LENGTH_SHORT).show()
         }
     }
 
+    // --- ФУНКЦІЯ ДЛЯ ЕКСПОРТУ ---
+    fun exportData() {
+        val jsonString = viewModel.getSavedArticlesJson()
+
+        val sendIntent = Intent(Intent.ACTION_SEND).apply {
+            putExtra(Intent.EXTRA_TEXT, jsonString)
+            putExtra(Intent.EXTRA_SUBJECT, "NewsApp Export Data")
+            type = "text/plain" // Відправляємо як текст, щоб можна було відкрити де завгодно
+        }
+        val shareIntent = Intent.createChooser(sendIntent, "Експорт даних в ERP...")
+        context.startActivity(shareIntent)
+    }
+
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(title = { Text("Збережені статті") })
+            CenterAlignedTopAppBar(
+                title = { Text("Збережені статті") },
+                // +++ ДОДАЄМО КНОПКУ ЕКСПОРТУ +++
+                actions = {
+                    if (isAuthenticated && savedArticles.isNotEmpty()) {
+                        IconButton(onClick = { exportData() }) {
+                            Icon(Icons.Default.Output, contentDescription = "Експорт в JSON")
+                        }
+                    }
+                }
+            )
         }
     ) { paddingValues ->
 
-        // --- ПЕРЕВІРКА СТАНУ ---
         if (!isAuthenticated) {
-            // ЕКРАН БЛОКУВАННЯ
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
+                modifier = Modifier.fillMaxSize().padding(paddingValues),
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Icon(
-                    imageVector = Icons.Default.Lock,
-                    contentDescription = "Locked",
-                    modifier = Modifier.size(64.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
+                Icon(Icons.Default.Lock, contentDescription = "Locked", modifier = Modifier.size(64.dp), tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.height(16.dp))
                 Text("Цей розділ захищено", style = MaterialTheme.typography.headlineSmall)
                 Spacer(Modifier.height(24.dp))
-                Button(onClick = { authenticate() }) {
-                    Text("Розблокувати")
-                }
+                Button(onClick = { authenticate() }) { Text("Розблокувати") }
             }
         } else {
-            // КОНТЕНТ (ЯКЩО РОЗБЛОКОВАНО)
             if (savedArticles.isEmpty()) {
                 Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(paddingValues)
-                        .padding(16.dp),
+                    modifier = Modifier.fillMaxSize().padding(paddingValues).padding(16.dp),
                     verticalArrangement = Arrangement.Center,
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
@@ -100,9 +101,7 @@ fun SavedScreen(
                 }
             } else {
                 LazyColumn(
-                    modifier = Modifier
-                        .padding(paddingValues)
-                        .padding(horizontal = 16.dp),
+                    modifier = Modifier.padding(paddingValues).padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = PaddingValues(vertical = 16.dp)
                 ) {
